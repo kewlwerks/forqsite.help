@@ -38,4 +38,4 @@ static site that survives a forqsite outage — and track the dev→prod gap bac
 | 10 | Name the class, not the instance — and close the backlog by resolving, never deleting | complete |
 | 11 | Make the deploy repeatable, and make drift visible | complete |
 | 12 | One stamp per release: re-verify every published claim against one forqsite commit | complete |
-| 13 | Release-time reconciliation: revise the brief, then check claims against a new forqsite commit | planned |
+| 13 | Release-time reconciliation: revise the brief, then check claims against a new forqsite commit | complete |

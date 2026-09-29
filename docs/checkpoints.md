@@ -257,4 +257,60 @@ manifest's scope defines what the phase can see. CER-046 carries that into Phase
 
 ---
 
+## cp-13
+
+**Phase:** 13 — Release-time reconciliation: revise the brief, then check claims against a new forqsite commit
+**Tag command:** `git tag cp-13 && git push origin main --tags`
+
+**Acceptance:** all 3 stories are complete.
+- **CONTENT-038.** The brief now puts release-time reconciliation in scope and scopes "no
+  build step" to the published artifact, and carries a dated ruling note. The same ruling
+  is in `docs/ideology.md` and `README.md` § Updating. A load-time check with a negative
+  control showed that neither page makes a network request from `file://`.
+- **INFRA-015.** `docs/architecture.md` § Claims manifest schema is now the one field
+  reference, which closes CER-045's documentation half.
+- **INFRA-016.** `scripts/stale-claims.py`, with a 47-case fixture selftest. The
+  selftests became the Build standards `test_command`, closing CER-045.
+
+The operator made these decisions on 2026-09-29:
+- approved the CONTENT-038 wording;
+- deferred CER-046 to Phase 14;
+- placed the schema in `architecture.md`;
+- accepted INFRA-016's four decisions (restamp semantics, closed-record reopening, no
+  `--json`, `unverified` exits 0).
+
+As in Phase 12, a Tests block reached its builder with a whole-line scan over pre-existing
+text: INFRA-016's hygiene grep matched a cache path already on the Build standards line it
+edits. The spec was corrected to a word diff before review.
+
+**Smoke run.** Target: the newest forqsite checkpoint tag, 66 commits past the release
+commit. Exit 3. Results: 38 claims, of which 22 untouched, 14 hold and 2 stale; 0 unverified;
+0 closed records. Both stale claims are the GAP-006 evidence line in `scripts/firstrun.sh`,
+cited by the GAP-006 claim and the Known-gaps claim. That evidence was rewritten upstream,
+so GAP-006 may have closed. Phase 14 reviews it; nothing was restamped here.
+
+**Gates:**
+- security PASS (opus), four LOW findings. CER-053 to CER-055 were filed. The fourth is
+  the test command also living in the untracked pairmode context file, which is tooling
+  state and is recorded in the CP-13 checklist.
+- intent ALIGNED.
+- docs FAIL, then PASS after remediation `bfbf219`. That commit made CLAUDE.md's test block
+  run the selftests and updated the phase doc's resume state. A LOW overclaim about exit
+  codes was then narrowed in `1560daf`.
+- dark-feature-scan PASS.
+
+**Drift check, before the tag.** The pages are byte-identical to cp-12. The check was run
+at the tag candidate, exit 0:
+
+```
+ref                1560dafe9db983470e0fc4157caa3342b9706196  1560daf "docs(architecture): selftest covers every exit code except 5 (CER-052) — docs-gate LOW"
+index.html          ok  6e23ac136b2691b3331e8f849a1ded0fa07643e12beb916ae3202be8fa82f335
+gap-handoff.html    ok  f1e7917060c12993138816192da576e75c1a97f7539a9e8307dba7d1849fea4f
+nginx.conf          not served — bind-mounted only; no request returns its bytes, so this check cannot cover it
+provenance         claims cdce820 deployed 2026-09-25T16:13:41Z  (claim, not the basis of the result above)
+result             ok — served bytes match the ref for all 2 bundles
+```
+
+---
+
 _(Add a checkpoint section for each phase. Tag only after full checkpoint sequence passes.)_
