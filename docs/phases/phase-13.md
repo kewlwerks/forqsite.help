@@ -69,18 +69,13 @@ covers stamped claims only.
 
 ## Resume state (2026-09-29)
 
-**Wording approved; build under way.** The operator approved the four
-`docs/brief.md` changes in CONTENT-038 (core belief, constraint, out-of-scope line, dated
-note) on 2026-09-28. The operator then widened the story to `docs/ideology.md` lines 73-74
-and `README.md` lines 45-46. The exact text for those two passages is in CONTENT-038
-§ Instructions items 5 and 6. The operator approved that text as written on 2026-09-29,
-and the build started.
-
-**CONTENT-038 merged 2026-09-29.** The checker stories are now stubbed: INFRA-015 is the
-schema reference and INFRA-016 is the checker. The spec-writer elaborates them, and the
-operator reviews both specs before either is built. Their inputs are CER-045 (the schema
-reference plus the `unverified`/`closed` fixture tests), CER-011 and CER-012 (constraints on
-quote matching), and phase-12.md § "After this phase". CER-046 is deferred to Phase 14.
+**All three stories are complete and merged; the phase is at checkpoint.** CONTENT-038
+revised the brief, with the operator approving all wording, items 5 and 6 included, on
+2026-09-29. INFRA-015 added § Claims manifest schema to `docs/architecture.md`. INFRA-016
+added `scripts/stale-claims.py` and its selftest, and the selftests became the Build
+standards `test_command`. The operator accepted the four decisions in INFRA-016's spec
+before it was built. CER-045 is resolved, CER-046 is deferred to Phase 14, and the
+reviewer's accepted exit-5 deviation is CER-052.
 
 Phase 14 prerequisites: CER-031, 034, 035, 037 and 046.
 
@@ -91,15 +86,26 @@ this phase, record the management surface before the phase is checkpointed.
 
 | Object | Management surface | Exception |
 |---|---|---|
-| | | |
+| none | — | This phase introduces no persistent schema object. `docs/claims-manifest.json` is Phase 12's, and the stale-claim checker writes nothing. |
 
 ---
 
 ### CP-13 Cold-eyes checklist
 
-- [ ] written-never-read — does anything this phase persists have no reader?
-- [ ] required-never-written — does any read path depend on a value no writer produces?
-- [ ] duplicate state — is any fact now stored twice with independent writers?
-- [ ] half-implementation — is any branch unreachable, or any producer without its consumer?
+- [x] written-never-read — no. The checker persists nothing. `closed[]` and `marker` are
+  read by the checker; no manifest has used them yet, and § Claims manifest schema records
+  that.
+- [x] required-never-written — one accepted case. No manifest yet carries `closed[]` or a
+  `marker`, so the `reopened` and `unverified` paths run only against the selftest's
+  fixtures. That is by design (CER-045). `FORQSITE_CLONE` is supplied by the operator and
+  documented.
+- [x] duplicate state — one instance, accepted. The test command lives in `CLAUDE.build.md`
+  § Build standards, in `CLAUDE.md` § Story test verification (whose line adds a `FAIL:`
+  marker that survives the `tail`), and in the untracked `.companion/pairmode_context.json`
+  that the build gate actually executes. The first two are tracked and were aligned at
+  cp-13. The third is pairmode tooling state, set by hand in INFRA-016's post-merge step.
+  A fresh checkout must set it again.
+- [x] half-implementation — one item, tracked. The checker's exit 5 is implemented but
+  untested (CER-052). The CP-13 security audit's LOW findings are CER-053 to CER-055.
 
-— developer fills in after phase completion —
+Filled 2026-09-29 at checkpoint, from the intent review and the security audit.

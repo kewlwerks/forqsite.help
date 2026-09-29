@@ -46,7 +46,7 @@ LOW      = style or minor concern. Fix when convenient.
 After the checklist, run the tests for the story:
 
 ```bash
-none — static HTML, open file:// or serve with any static file server 2>&1 | tail -30
+for t in scripts/*-selftest.sh; do bash "$t" || { echo "FAIL: $t"; exit 1; }; done 2>&1 | tail -30
 ```
 
 Report the result as part of your review output. A story with failing tests is not complete.
