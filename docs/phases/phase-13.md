@@ -63,12 +63,12 @@ They are not specced yet and will be added to this table when they are.
 
 ## Resume state (2026-09-29)
 
-**Build is on hold until the operator approves wording.** The operator approved the four
+**Wording approved; build under way.** The operator approved the four
 `docs/brief.md` changes in CONTENT-038 (core belief, constraint, out-of-scope line, dated
 note) on 2026-09-28. The operator then widened the story to `docs/ideology.md` lines 73-74
 and `README.md` lines 45-46. The exact text for those two passages is in CONTENT-038
-§ Instructions items 5 and 6, and the operator has **not yet approved it**. Get that
-approval, or the requested changes, before running "Build Phase 13".
+§ Instructions items 5 and 6. The operator approved that text as written on 2026-09-29,
+and the build started.
 
 **After CONTENT-038 merges,** spec the stale-claim checker stories. Their inputs:
 - CER-045: the manifest schema, plus fixture tests for the `unverified` and `closed` paths.
