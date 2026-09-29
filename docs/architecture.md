@@ -62,7 +62,9 @@ forqsite.help/
 ├── docker-compose.yml  # nginx:alpine container, bind-mounts the two files above
 ├── nginx.conf          # listens on :6000 (matches caddy's port-registry.md assignment)
 ├── scripts/
-│   └── bundle-template.py  # canonical bundle-edit tool (extract|inject|verify) — see Editing procedure below
+│   ├── bundle-template.py  # canonical bundle-edit tool (extract|inject|verify) — see Editing procedure below
+│   ├── stale-claims.py     # release-time stale-claim checker (reports, never edits) — see Stale-claim checker below
+│   └── stale-claims-selftest.sh  # fixture selftest for stale-claims.py
 ├── docs/
 │   └── claims-manifest.json  # every stamped claim both pages make about forqsite, and where its evidence lives
 └── README.md
@@ -118,6 +120,20 @@ itself.
 every claim each stamp covers, and where in the forqsite repository each claim's evidence
 lives, against one pinned release commit. The stories that re-verify or restamp a claim
 update it in the same change. Its field vocabulary is defined in § Claims manifest schema.
+
+**Stale-claim checker** (INFRA-016, Phase 13). `scripts/stale-claims.py` compares the
+manifest's claims and closed records at a target forqsite commit against the release
+commit: it re-applies every recorded check (evidence present, absent literal or path still
+absent, directory count unchanged) at the target, and lists the claims that went stale and
+the closed gaps that reopened. It reads a local forqsite clone named by the
+`FORQSITE_CLONE` environment variable, using read-only git subcommands only, and fetches
+nothing. It writes nothing: not the manifest, not the pages, not the clone; rewriting a
+stale claim is a reviewed story. Its symbol matching normalises whitespace on purpose
+(CER-011), so a reindent or reflow does not fail a claim whose meaning is unchanged and an
+absent literal cannot hide behind a line break. It reads no page, so the inert-script
+rendering concern of CER-012 does not arise. Its usage, verdicts and exit codes live in its
+own header docstring, per the exit-code contract below; `scripts/stale-claims-selftest.sh`
+exercises each verdict and exit code against a fixture repository.
 
 **Deploy, drift-check and provenance scripts** (INFRA-006, INFRA-007, INFRA-008, Phase 11).
 Three scripts, each documented in full in its own header comment — this section points at
@@ -269,6 +285,30 @@ committed version.
 The Known-gaps claim (CONTENT-030, CONTENT-031) is the one `index.html` claim whose note
 names a `gap-handoff.html` stamp id. It has no `result`, by design.
 
+### Restamps and closed records
+
+Both rules were ruled by the operator on 2026-09-29 in INFRA-016's spec.
+
+- **What `result` means after a restamp.** `result` always describes the most recent
+  restamp. When a later forqsite commit is pinned as `release.commit`, every claim's
+  `result` is derived again, against the pages as they stood at the previous release: a
+  claim whose quote is unchanged is `open`, a claim whose quote was rewritten is `changed`,
+  a new claim is `added`, and a claim that could not be verified is `unverified`. A
+  prefixed note from an earlier release (`CHANGED:`, `ADDED:`) is removed along with the
+  result it explained, and the manifest's git history keeps it. A live claim's `closed_by`
+  is not derived again. Since CONTENT-032 every stamp names the release commit, so every
+  claim is restamped at every release. A sticky `result`, a per-release history, and
+  updating `result` only when a quote changes were rejected. The stale-claim checker does
+  not read `result`, except to surface `unverified`.
+- **How a `closed[]` record is checked for reopening.** A closed record's `evidence` is the
+  literals at the release commit that show the fix (CONTENT-031). The checker re-checks
+  them at the target by the same rules as a live claim's evidence (and `absent`/`counts`,
+  if a record carries them). If every check passes, the record is `closed`; if any check
+  fails, it is `reopened`, which fails the run the same way a stale claim does. A record
+  with no checks at all is also `reopened`, because nothing shows the fix still holds.
+  Detecting a `git revert` of `closed_by.commit`, and checking whether the gap reappears on
+  a page, were rejected.
+
 ### Disagreements and unspecified behaviour
 
 - `ADDED:` is specced by CONTENT-035 and in use, but CER-045 and INFRA-015's own Context omit it.
@@ -277,7 +317,7 @@ names a `gap-handoff.html` stamp id. It has no `result`, by design.
 - The Known-gaps claim has no `result`. CER-045 records this as a finding, but it is specced.
 - CONTENT-030 specs `"evidence": []` with an explanatory note for a claim with no findable evidence. No manifest has used it.
 - A `closed[]` record has no `page`, `quote`, `stamp` or `location`.
-- It is not specified what `result` means once a later release commit is pinned and the claims are restamped. It is also not specified how a `closed[]` record is checked for reopening. Both are decided in INFRA-016's spec, by operator ruling on 2026-09-29, and are not decided here.
+- What `result` means after a restamp, and how a `closed[]` record is checked for reopening, were unspecified until INFRA-016; § Restamps and closed records states both.
 
 ---
 
@@ -296,7 +336,7 @@ names a `gap-handoff.html` stamp id. It has no `result`, by design.
 none — static HTML, open file:// or serve with any static file server
 
 # Run all tests
-none — static HTML, open file:// or serve with any static file server
+for t in scripts/*-selftest.sh; do bash "$t" && continue; exit 1; done
 ```
 
 ---
