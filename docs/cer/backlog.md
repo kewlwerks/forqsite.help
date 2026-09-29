@@ -92,9 +92,7 @@ Not urgent, marginal value. Style, cosmetics, speculative improvements.
 
 | ID | Finding | Source | Date | Phase |
 |----|---------|--------|------|-------|
-
-
-| — | *(none)* | — | — | — |
+| CER-052 | `scripts/stale-claims.py` exits 5 when a read-only git command fails unexpectedly, so the failure is never reported as a false `untouched`/`holds`. The spec's exit-code list does not include it, and `scripts/stale-claims-selftest.sh` never exercises it. The reviewer accepted it as a documented widening. Fix shape: one selftest case that makes a git call fail (for example, an allowlisted subcommand pointed at a corrupt object) and asserts exit 5 with no clone path in stderr. | reviewer (INFRA-016, accepted deviation) | 2026-09-29 | 13 |
 
 
 ---
