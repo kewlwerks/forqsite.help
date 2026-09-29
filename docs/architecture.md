@@ -133,7 +133,8 @@ stale claim is a reviewed story. Its symbol matching normalises whitespace on pu
 absent literal cannot hide behind a line break. It reads no page, so the inert-script
 rendering concern of CER-012 does not arise. Its usage, verdicts and exit codes live in its
 own header docstring, per the exit-code contract below; `scripts/stale-claims-selftest.sh`
-exercises each verdict and exit code against a fixture repository.
+exercises each verdict and every exit code except 5 (an unexpected git failure, untested:
+CER-052) against a fixture repository.
 
 **Deploy, drift-check and provenance scripts** (INFRA-006, INFRA-007, INFRA-008, Phase 11).
 Three scripts, each documented in full in its own header comment — this section points at
