@@ -23,8 +23,8 @@ forqsite.com is dogfooded as a tenant on a forqsite install; this docs site deli
 > These are the values that shaped the design — what the project prefers and why.
 
 - Docs must survive infra failure — this site must never depend on the thing it documents.
-- Self-containment over convenience — no build step, no external assets, even though it
-  makes hand-editing harder.
+- Self-containment over convenience — the published pages need no build step to read and
+  fetch nothing when opened, even though that makes hand-editing harder.
 - Generated artifacts over hand-maintained source — `index.html` and `gap-handoff.html`
   are compiled bundles re-exported from a design session, not edited by hand.
 
@@ -46,8 +46,16 @@ forqsite.com is dogfooded as a tenant on a forqsite install; this docs site deli
 
 _Explicit constraints the operator has placed on scope or approach:_
 
-- No server, no database, no build step for anything published under this repo.
+- The published artifact is plain, self-contained HTML: it opens from any filesystem, needs
+  no server, database or build step to read, and fetches nothing at runtime. Tooling that
+  checks, restamps or deploys the pages runs before publication, and reading them must
+  never require it.
 - Do not make this site a forqsite tenant — that would defeat its purpose.
+
+_Revised 2026-09-28 by operator ruling (CONTENT-038): "no build step" governs the published
+pages and their reader, not the tooling that prepares a release, and release-time
+reconciliation with forqsite replaced the exclusion of real-time sync. In the operator's
+words, the release "is already plain html that could run from a usb disk if copied."_
 
 ---
 
@@ -57,8 +65,9 @@ _Things that might seem related but are intentional omissions:_
 
 - Hosting forqsite.com itself, or any other dogfooded forqsite property.
 - A CMS, admin UI, or dynamic content pipeline for these docs.
-- Real-time sync of `gap-handoff.html` with the actual state of `nullvalues/forqsite` —
-  it's pruned manually as gap items land upstream.
+- Live coupling to `nullvalues/forqsite`. The pages are reconciled with it at release time
+  instead: forqsite's commits are walked from the new release back to the pinned release
+  commit, every claim whose evidence moved is updated, and the result is released.
 
 ---
 

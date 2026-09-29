@@ -70,8 +70,10 @@ Examples:
 - "Availability over freshness — the docs staying reachable during a forqsite outage
   matters more than being up-to-the-minute. A stale doc you can read beats a fresh one
   you can't."
-- "Self-containment over convenience — no build step, even though it makes hand-editing
-  harder, because the whole point is that this site depends on nothing external to run."
+- "Self-containment over convenience — the published pages need no build step to read and
+  fetch nothing when opened, even though that makes hand-editing harder, because the whole
+  point is that this site depends on nothing external to run. Tooling that checks, restamps
+  or deploys the pages may run before publication; reading them never needs it."
 
 
 ---
