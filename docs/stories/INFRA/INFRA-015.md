@@ -2,7 +2,7 @@
 id: INFRA-015
 rail: INFRA
 title: Claims manifest schema reference
-status: planned
+status: complete
 phase: "13"
 story_class: doc
 auth_gated: false
