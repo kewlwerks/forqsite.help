@@ -117,7 +117,7 @@ itself.
 **Claims manifest.** `docs/claims-manifest.json` lists every forqsite stamp in both pages,
 every claim each stamp covers, and where in the forqsite repository each claim's evidence
 lives, against one pinned release commit. The stories that re-verify or restamp a claim
-update it in the same change.
+update it in the same change. Its field vocabulary is defined in § Claims manifest schema.
 
 **Deploy, drift-check and provenance scripts** (INFRA-006, INFRA-007, INFRA-008, Phase 11).
 Three scripts, each documented in full in its own header comment — this section points at
@@ -189,6 +189,95 @@ timestamp and copied; each file's sha256 was verified on the remote side and aga
 both pages were then fetched over the reverse proxy, returning `200` with bodies hashing
 equal to the repository's. This incident is what CER-014 and INFRA-006/007/008 exist to
 prevent a gate from missing again.
+
+---
+
+## Claims manifest schema
+
+This section is the authoritative definition of `docs/claims-manifest.json`. The CONTENT-030
+to CONTENT-032 and CONTENT-035 to CONTENT-037 specs are its history, and where they disagree
+this section says so below. It supersedes CONTENT-030 Instructions 7 ("Do not describe its
+schema there, because the file already shows it"), because that premise no longer holds: the
+file cannot show a field or value it has never contained (`closed`, `marker`, `unverified`,
+`UNVERIFIED:`), and it no longer contains `MISMATCH:`. Status is measured against the
+manifest's git history: `in use` occurs in the live manifest, `retired` is absent now but
+occurs in an earlier committed version, and `unexercised` has never been held by any
+committed version.
+
+### Fields
+
+| Field | Type | Status | Source | Meaning |
+| --- | --- | --- | --- | --- |
+| `release` | object | in use | CONTENT-030 | The one release commit every claim is verified against. `phase-12.md` § Release commit mirrors it, and the manifest is the authoritative copy. |
+| `release.repo` | string | in use | CONTENT-030 | The slug of the repository the claims are about. |
+| `release.commit` | string | in use | CONTENT-030 | The full 40-hex sha, taken as the tip of forqsite's `origin/main` when the release was pinned. |
+| `release.committed` | string | in use | CONTENT-030 | The date of that commit. |
+| `release.pinned` | string | in use | CONTENT-030 | The date the release was pinned. |
+| `stamps` | array | in use | CONTENT-030 | One record per stamp occurrence in the template. Every stamp is cited by at least one claim. |
+| `stamps[].id` | string | in use | CONTENT-030 | The stamp id, `S-NN`. |
+| `stamps[].page` | string | in use | CONTENT-030 | The page the stamp is on, `index.html` or `gap-handoff.html`. |
+| `stamps[].location` | string | in use | CONTENT-030 | Where on the page the stamp sits. |
+| `stamps[].text` | string | in use | CONTENT-030, CONTENT-032, CONTENT-035 | The exact substring of the page's `bundle-template.py extract` output that contains `nullvalues/forqsite@<hex>`. It is not taken from the bundle or the rendered DOM, and it may be markup or script source (S-01 contains `<br>`, and S-06 is a JS array literal). |
+| `stamps[].commit` | string | in use | CONTENT-030, CONTENT-032 | The sha as printed in the stamp. Since CONTENT-032 every stamp commit equals `release.commit[:8]`. |
+| `stamps[].date` | string | in use | CONTENT-030 | The stamp's date in ISO form, while `text` carries the date in the stamp's own format. |
+| `stamps[].scope` | string | in use | CONTENT-030 | The coverage reading of the stamp, following the footer, inline and table-row rules of CONTENT-030 Instructions 4. |
+| `claims` | array | in use | CONTENT-030 | One record per claim the pages make about forqsite. |
+| `claims[].id` | string | in use | CONTENT-030 | The claim id, `C-NNN`. Ids are never reused. |
+| `claims[].page` | string | in use | CONTENT-030 | The page the claim is on. |
+| `claims[].location` | string | in use | CONTENT-030 | Where on the page the claim sits. |
+| `claims[].claim` | string | in use | CONTENT-030 | The claim in words. |
+| `claims[].quote` | string | in use | CONTENT-030, CONTENT-031 | A verbatim substring of the extracted template. |
+| `claims[].evidence` | array | in use | CONTENT-030 | The repo evidence for the claim. The Known-gaps claim carries the deduplicated union of the evidence of every claim that cites its stamp. |
+| `claims[].evidence[].path` | string | in use | CONTENT-030 | A repo-relative path in forqsite. |
+| `claims[].evidence[].symbol` | string | in use | CONTENT-030, CONTENT-031 | A single-line literal that `git grep -F` finds in that path at `release.commit`. |
+| `claims[].stamp` | string | in use | CONTENT-030 | The `S-` id of the stamp covering the claim. The commit and date live only on the stamp. |
+| `claims[].result` | string | in use | CONTENT-031, CONTENT-032, CONTENT-035 | The outcome of the re-verification at `release.commit` that produced the claim's current stamp, judged against the page as it stood before it. See Values. The Known-gaps claim has none, by design. |
+| `claims[].note` | string | in use | CONTENT-030, CONTENT-031, CONTENT-032, CONTENT-035 | Free text that never names a claim id. It carries a prefix when the result needs explaining. See Values. |
+| `claims[].marker` | string | unexercised | CONTENT-032, CONTENT-036 | For an `unverified` claim, an on-page phrase that contains "not verified" and is new to the page. No committed manifest has held one. |
+| `claims[].absent` | array | in use | CONTENT-031 | Literals the claim says are missing from forqsite. |
+| `claims[].absent[].path` | string | in use | CONTENT-031 | A path checked at the release commit. With no `symbol`, the path does not exist there. |
+| `claims[].absent[].symbol` | string | in use | CONTENT-031 | The path exists at the release commit and this literal is not found in it. |
+| `claims[].counts` | array | in use | CONTENT-032 | Directory counts the claim's quote states. |
+| `claims[].counts[].path` | string | in use | CONTENT-032 | The directory counted, one level. |
+| `claims[].counts[].suffix` | string | in use | CONTENT-032 | The name suffix counted. |
+| `claims[].counts[].n` | number | in use | CONTENT-032 | The number of names in `git ls-tree --name-only <release> <path>/` that end in `suffix`. `n` also appears in the quote. |
+| `claims[].closed_by` | object | in use | CONTENT-031, CONTENT-036 | Appears on a live claim that is only partly closed. |
+| `claims[].closed_by.commit` | string | in use | CONTENT-031 | A full sha, an ancestor of `release.commit` and not an ancestor of the old stamp's commit. |
+| `claims[].closed_by.path` | string | in use | CONTENT-031 | A path the `closed_by` commit touches. |
+| `closed` | array | unexercised | CONTENT-031, CONTENT-036 | A closed gap's claims move out of `claims` into this array, and the gap is removed from both pages. No manifest has used it yet. |
+| `closed[].id` | string | unexercised | CONTENT-031 | The claim id. |
+| `closed[].gap` | string | unexercised | CONTENT-031 | The gap that was closed. |
+| `closed[].claim` | string | unexercised | CONTENT-031 | The claim in words. |
+| `closed[].closed_by` | object | unexercised | CONTENT-031 | The commit that closed the gap, as `{commit, path}`. |
+| `closed[].closed_by.commit` | string | unexercised | CONTENT-031 | The closing commit, a full sha. |
+| `closed[].closed_by.path` | string | unexercised | CONTENT-031 | A path the closing commit touches. |
+| `closed[].evidence` | array | unexercised | CONTENT-031 | The claim's evidence, as for `claims[].evidence`. |
+
+### Values
+
+| Field | Value | Status | Source | Meaning |
+| --- | --- | --- | --- | --- |
+| `claims[].result` | `open` | in use | CONTENT-031, CONTENT-032 | The quote is unchanged. |
+| `claims[].result` | `changed` | in use | CONTENT-031, CONTENT-032 | The quote is new, and the note starts `CHANGED:` and gives the old and new wording. A claim that had a `MISMATCH:` note became `changed`. |
+| `claims[].result` | `added` | in use | CONTENT-031, CONTENT-035 | A new GAP entry. The quote is new, the claim has a new `C-` id and the footer stamp, and the note starts `ADDED:` and gives the verification date. |
+| `claims[].result` | `unverified` | unexercised | CONTENT-032, CONTENT-036 | The note starts `UNVERIFIED:` and gives the reason. `marker` holds an on-page phrase that contains "not verified" and is new to the page. The stamp still names the release commit. |
+| `claims[].note` | `CHANGED:` | in use | CONTENT-031, CONTENT-032 | Gives the old and new wording of a changed quote. |
+| `claims[].note` | `ADDED:` | in use | CONTENT-035 | Gives the verification date of a new GAP entry. |
+| `claims[].note` | `UNVERIFIED:` | unexercised | CONTENT-032 | Gives the reason a claim could not be verified. |
+| `claims[].note` | `MISMATCH:` | retired | CONTENT-030, CONTENT-031, CONTENT-032 | The page's implied literal is absent at the release commit, and the claim cites what the file does contain. CONTENT-031 and CONTENT-032 resolved every one. |
+
+The Known-gaps claim (CONTENT-030, CONTENT-031) is the one `index.html` claim whose note
+names a `gap-handoff.html` stamp id. It has no `result`, by design.
+
+### Disagreements and unspecified behaviour
+
+- `ADDED:` is specced by CONTENT-035 and in use, but CER-045 and INFRA-015's own Context omit it.
+- CONTENT-030's schema sketch gives `symbol` as "symbol or behaviour", while its Ensures require a literal. The manifest follows the literal rule, and so does this reference.
+- No single spec lists all four `result` values. CONTENT-031 allows `open`/`changed`/`added`, and CONTENT-032 allows `open`/`changed`/`unverified`.
+- The Known-gaps claim has no `result`. CER-045 records this as a finding, but it is specced.
+- CONTENT-030 specs `"evidence": []` with an explanatory note for a claim with no findable evidence. No manifest has used it.
+- A `closed[]` record has no `page`, `quote`, `stamp` or `location`.
+- It is not specified what `result` means once a later release commit is pinned and the claims are restamped. It is also not specified how a `closed[]` record is checked for reopening. Both are decided in INFRA-016's spec, by operator ruling on 2026-09-29, and are not decided here.
 
 ---
 
