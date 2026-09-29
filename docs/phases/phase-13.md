@@ -43,6 +43,8 @@ the manifest) are its inputs.
 | ID | Title | Status |
 |----|-------|--------|
 | CONTENT-038 | Revise the brief: release-time reconciliation in scope, no-build-step scoped to the published artifact | complete |
+| INFRA-015 | Claims manifest schema reference | planned |
+| INFRA-016 | Stale-claim checker against a newer forqsite commit | planned |
 
 ### CONTENT-038 — Revise the brief
 
@@ -58,8 +60,12 @@ only asserted rather than checked at load time.
 ## Story ordering
 
 CONTENT-038 runs first and merges before any other story in this phase branches. The brief
-it revises is what permits the rest. The stale-claim checker stories follow after it merges.
-They are not specced yet and will be added to this table when they are.
+it revises is what permits the rest. INFRA-015 (the manifest schema reference) comes next,
+then INFRA-016 (the checker), which builds against that reference.
+
+CER-046 (bringing the unstamped command blocks into the manifest) was deferred by the
+operator on 2026-09-29. It stays in Do Later as a Phase 14 prerequisite, so the checker
+covers stamped claims only.
 
 ## Resume state (2026-09-29)
 
@@ -70,13 +76,13 @@ and `README.md` lines 45-46. The exact text for those two passages is in CONTENT
 § Instructions items 5 and 6. The operator approved that text as written on 2026-09-29,
 and the build started.
 
-**After CONTENT-038 merges,** spec the stale-claim checker stories. Their inputs:
-- CER-045: the manifest schema, plus fixture tests for the `unverified` and `closed` paths.
-- CER-046: command blocks that sit outside the manifest.
-- CER-011 and CER-012: design constraints on quote matching.
-- The Phase 12 plan in `docs/phases/phase-12.md` § "After this phase".
+**CONTENT-038 merged 2026-09-29.** The checker stories are now stubbed: INFRA-015 is the
+schema reference and INFRA-016 is the checker. The spec-writer elaborates them, and the
+operator reviews both specs before either is built. Their inputs are CER-045 (the schema
+reference plus the `unverified`/`closed` fixture tests), CER-011 and CER-012 (constraints on
+quote matching), and phase-12.md § "After this phase". CER-046 is deferred to Phase 14.
 
-Phase 14 prerequisites: CER-031, 034, 035 and 037.
+Phase 14 prerequisites: CER-031, 034, 035, 037 and 046.
 
 ## Schema delivery
 
