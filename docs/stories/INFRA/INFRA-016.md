@@ -17,14 +17,14 @@ touches:
 narrative_roles: []
 ---
 
-## Operator decisions needed
+## Operator decisions (ruled 2026-09-29)
 
 The operator ruled on 2026-09-29 that this spec decides the two questions INFRA-015 left
-open. The spec proposes an answer to each, plus two smaller choices, and the Instructions
-are written as if every recommendation is accepted. If the operator rules otherwise, revise
-this spec before building it.
+open. The spec proposed an answer to each, plus two smaller choices. **The operator accepted
+all four recommendations as written on 2026-09-29**, and the Instructions implement them.
+They are decisions now, not proposals; the rejected alternatives are kept as the record.
 
-1. **What `result` means after a restamp.** Recommendation: `result` always describes the
+1. **What `result` means after a restamp.** Ruled (operator, 2026-09-29): `result` always describes the
    most recent restamp. When a later forqsite commit is pinned as `release.commit`, every
    claim's `result` is derived again, against the pages as they stood at the previous
    release. A claim whose quote is unchanged is `open`. A claim whose quote was rewritten is
@@ -42,7 +42,7 @@ this spec before building it.
    - Updating `result` only when a quote changes. Different claims' results would then refer
      to different release commits, while `release.commit` names one.
    The checker does not read `result`, except to surface `unverified`.
-2. **How a `closed[]` record is checked for reopening.** Recommendation: CONTENT-031
+2. **How a `closed[]` record is checked for reopening.** Ruled (operator, 2026-09-29): CONTENT-031
    defines a closed record's `evidence` as "literals at the release commit that show the
    fix". The checker re-checks those literals at the target, by the same rules as a live
    claim's evidence (and `absent`/`counts`, if a record carries them). If every check
@@ -54,11 +54,11 @@ this spec before building it.
      and a revert message is a convention, not an invariant.
    - Checking whether the gap reappears on a page. The pages cannot change when forqsite
      does, and the checker reads no page.
-3. **No `--json` in this story.** Recommendation: defer it to Phase 14. The release job
+3. **No `--json` in this story.** Ruled (operator, 2026-09-29): defer it to Phase 14. The release job
    there is its only consumer, and a machine format with no reader is the
    producer-without-consumer that the CP-13 checklist asks about. Each report line begins
    with `<id> <verdict>`, which is stable enough for the selftest and for a human.
-4. **`unverified` does not fail the run.** Recommendation: exit 0. An `unverified` claim is
+4. **`unverified` does not fail the run.** Ruled (operator, 2026-09-29): exit 0. An `unverified` claim is
    already published as unverified, with an on-page marker. If a known, marked state failed
    every run, the exit code would stay red and people would learn to ignore it. It is still
    printed on every run.
