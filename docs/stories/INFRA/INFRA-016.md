@@ -381,9 +381,15 @@ bash scripts/stale-claims-selftest.sh
 sh -c 'for t in scripts/*-selftest.sh; do bash "$t" && continue; exit 1; done'
 python3 scripts/stale-claims.py </dev/null; test $? -eq 64
 git diff --quiet main -- docs/claims-manifest.json index.html gap-handoff.html
-if git diff main -- README.md docs/architecture.md docs/cer/backlog.md CLAUDE.build.md scripts/ \
-   | grep '^+' | grep -nE '/mnt/|/home/|~/'; then exit 1; fi
+if git diff --word-diff=porcelain main -- README.md docs/architecture.md docs/cer/backlog.md CLAUDE.build.md scripts/ \
+   | grep '^+' | grep -v '^+++ ' | grep -nE '/mnt/|/home/|~/'; then exit 1; fi
 ```
+
+The last check diffs by word, not by line (`--word-diff=porcelain`). `CLAUDE.build.md`'s
+Build standards line already contains a `~/flex-marketplace-cache/...` path on `main`, and
+Instructions 7 edits that same line, so a line diff would report the unchanged path as an
+added line. Found during the first build on 2026-09-29, and corrected in the spec before
+review.
 
 Acceptance: the selftest prints only PASS lines and exits 0, the loop exits 0, and the last
 three lines exit 0. The reviewer then confirms that the selftest is not vacuous. The
