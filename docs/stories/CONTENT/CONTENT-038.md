@@ -2,7 +2,7 @@
 id: CONTENT-038
 rail: CONTENT
 title: Revise the brief: release-time reconciliation in scope, no-build-step scoped to the published artifact
-status: draft
+status: complete
 phase: "13"
 story_class: doc
 auth_gated: false

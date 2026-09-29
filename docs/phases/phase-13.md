@@ -42,7 +42,7 @@ the manifest) are its inputs.
 
 | ID | Title | Status |
 |----|-------|--------|
-| CONTENT-038 | Revise the brief: release-time reconciliation in scope, no-build-step scoped to the published artifact | draft |
+| CONTENT-038 | Revise the brief: release-time reconciliation in scope, no-build-step scoped to the published artifact | complete |
 
 ### CONTENT-038 — Revise the brief
 
