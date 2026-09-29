@@ -9,7 +9,8 @@ auth_gated: false
 schema_introduces: false
 primary_files:
   - docs/architecture.md
-touches: []
+touches:
+  - docs/cer/backlog.md
 narrative_roles: []
 ---
 
@@ -29,6 +30,14 @@ disagree, or a field was specced but never exercised (`closed`, `marker`), say s
 
 Operator decision 2026-09-29: this story and INFRA-016 are Phase 13's checker work. CER-046
 (command blocks into the manifest) is deferred.
+
+Operator decisions 2026-09-29, on this spec's open questions:
+- The schema goes in a new `docs/architecture.md` section, which reverses CONTENT-030
+  Instructions 7. The section itself must state the reversal and its reason.
+- What `result` means after a restamp, and how a `closed[]` record is checked for reopening,
+  are decided in INFRA-016's spec, not here.
+- This story adds a progress note to CER-045. The row stays open until INFRA-016's fixture
+  tests ship.
 
 **Where the reference goes.** It goes in `docs/architecture.md`, as the stub proposes.
 CLAUDE.md makes that file required reading before any task, so INFRA-016's builder reads it
@@ -51,8 +60,9 @@ check against the manifest. It documents every key that has ever occurred in any
 version of the manifest, and every specced or observed `result` value and `note` prefix.
 Each of these carries a status that matches the manifest's git history, and cites a spec
 that names it. The section records the disagreements and unspecified behaviour listed in
-Instructions 4. The existing **Claims manifest.** paragraph points to the section. The
-manifest and both pages are byte-identical to `main`.
+Instructions 4. The existing **Claims manifest.** paragraph points to the section. CER-045's
+row in `docs/cer/backlog.md` carries the Instructions 5 note and is still open, and no other
+backlog line changes. The manifest and both pages are byte-identical to `main`.
 
 ## Instructions
 
@@ -139,14 +149,27 @@ manifest and both pages are byte-identical to `main`.
      findable evidence. No manifest has used it.
    - A `closed[]` record has no `page`, `quote`, `stamp` or `location`.
    - It is not specified what `result` means once a later release commit is pinned and the
-     claims are restamped. It is also not specified how a `closed[]` record is checked.
-     Leave both to INFRA-016. Do not decide them here.
+     claims are restamped. It is also not specified how a `closed[]` record is checked for
+     reopening. The entry says both are decided in INFRA-016's spec, by operator ruling on
+     2026-09-29, and names INFRA-016. Do not decide them here.
+5. **CER-045 progress note.** In `docs/cer/backlog.md`, append this text to the end of
+   CER-045's Finding cell, after `which no manifest has yet exercised.`, with one space
+   before it. Change nothing else in the row or the file. Keep the Source, Date and Phase
+   cells as they are, and add no resolution marker. The note is the one line in this block,
+   backticks included:
+
+   ```text
+   Progress (INFRA-015, 2026-09-29): the documentation half is done; `docs/architecture.md` § Claims manifest schema is the schema reference. This row stays open until INFRA-016's fixture tests for the `unverified` marker path and the `closed` array ship.
+   ```
 
 Ideology check: this is documentation only. It names no host or path of ours ("Name the
 class, not the instance"). Its checks compare the reference to the manifest itself and read
 prose whitespace-normalised or through table structure ("Assert the invariant, not a proxy
 for it" and its spec-authoring convention). No page changes, so "Zero runtime dependencies"
 is untouched.
+
+Preflight note: `INFRA` is this story's rail prefix, as in `INFRA-015` in the CER-045 note,
+not a constant in the source tree.
 
 Length: this spec runs past the ~100-line guideline for doc stories. The derived meanings
 are the deliverable, and restating them loosely would invite the invented semantics the
@@ -156,8 +179,9 @@ stub forbids.
 
 The project has no test suite. Save this block to a scratch file outside the repo, then run
 it from the repo root with `bash <file>`. It needs no forqsite clone. On `main` before the
-edit, checks 1 to 5 each print `FAIL` and the script exits 1. The opening `git diff` guard
-and the closing host-path guard pass on `main` by design.
+edit, checks 1 to 6 each print `FAIL` and the script exits 1. The opening `git diff` guard
+and the closing host-path guard (over `docs/architecture.md` and `docs/cer/backlog.md`)
+pass on `main` by design.
 
 ```bash
 set -e
@@ -224,17 +248,36 @@ bad = set() if cm and '§ Claims manifest schema' in norm(cm.group(1)) else {'po
 d = re.search(r'^### Disagreements and unspecified behaviour\n(.*?)(?=^### |\Z)', sec, re.S | re.M)
 dn = norm(d.group(1)) if d else ''
 bad |= {a for a in ('ADDED:', 'symbol or behaviour', 'Known-gaps claim', '"evidence": []', 'CONTENT-030',
-                     'not specified') if a not in dn}
+                     'not specified', 'INFRA-016') if a not in dn}
 check('5 pointer and disagreements recorded', bad)
+# 6. CER-045 carries the progress note, stays open, and is the only backlog change
+NOTE = ("Progress (INFRA-015, 2026-09-29): the documentation half is done; `docs/architecture.md` § Claims "
+        "manifest schema is the schema reference. This row stays open until INFRA-016's fixture tests for the "
+        "`unverified` marker path and the `closed` array ship.")
+MARK = re.compile(r'(?:^|\|\s*|[.!?]\s+|\*\*|\(|\[)(resolved|superseded|obsolete)\b', re.I)
+old, new = git('show', 'main:docs/cer/backlog.md').splitlines(), open('docs/cer/backlog.md').read().splitlines()
+is045 = lambda l: l.startswith('| CER-045 ')
+cell = lambda l: l.split('|', 2)[2].rsplit('|', 4)[0].strip()
+bad = set()
+if len(old) != len(new) or any(a != b for a, b in zip(old, new) if not is045(a)): bad.add('a backlog line other than CER-045 changed')
+o, n = [l for l in old if is045(l)], [l for l in new if is045(l)]
+if len(o) != 1 or len(n) != 1: bad.add('CER-045 row not found once')
+else:
+    oc, nc = cell(o[0]), cell(n[0]); added = nc[len(oc):]
+    if not nc.startswith(oc) or norm(added).strip() != norm(NOTE): bad.add('progress note missing or not appended verbatim')
+    if n[0].split('|')[-4:] != o[0].split('|')[-4:]: bad.add('Source/Date/Phase changed')
+    if MARK.search(added): bad.add('note closes the row')
+check('6 CER-045 progress note is the only backlog change', bad)
 print('FAILED:', fails) if fails else print('OK')
 raise SystemExit(1 if fails else 0)
 EOF
-if git diff main -- docs/architecture.md | grep '^+' | grep -nE '/mnt/|/home/|~/'; then exit 1; fi
+if git diff main -- docs/architecture.md docs/cer/backlog.md | grep '^+' | grep -nE '/mnt/|/home/|~/'; then exit 1; fi
 echo DONE
 ```
 
-Pass means five `PASS` lines, then `OK` and `DONE`, and exit 0. The spec-writer confirmed
-the failing run on `main`, and confirmed a pass against a mock section in a throwaway clone.
+Pass means six `PASS` lines, then `OK` and `DONE`, and exit 0. The spec-writer confirmed
+the failing run on `main`, and confirmed a pass against a mock section and the CER-045 note
+in a throwaway clone.
 The reviewer also reads each Meaning cell against the cited spec's own wording. A test can
 prove that a row cites a spec that names the field. It cannot prove that the meaning was
 copied rather than invented.
@@ -244,8 +287,8 @@ copied rather than invented.
 - The stale-claim checker, its fixture tests for the `unverified` and `closed` paths (the
   other half of CER-045), and any decision left open in Instructions 4. All of these are
   INFRA-016's.
-- Annotating or resolving CER-045 in `docs/cer/backlog.md`. The row stays open until its
-  fixture half ships.
+- Resolving CER-045, or changing any backlog line other than the Instructions 5 note. The
+  row stays open until its fixture half ships.
 - Any change to `docs/claims-manifest.json`, either page, or a CONTENT spec, including
   fixing a disagreement this story records.
 - A JSON Schema file or other machine-readable schema artifact.
