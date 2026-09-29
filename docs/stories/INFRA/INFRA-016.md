@@ -2,7 +2,7 @@
 id: INFRA-016
 rail: INFRA
 title: Stale-claim checker against a newer forqsite commit
-status: planned
+status: complete
 phase: "13"
 auth_gated: false
 schema_introduces: false

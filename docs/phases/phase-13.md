@@ -44,7 +44,7 @@ the manifest) are its inputs.
 |----|-------|--------|
 | CONTENT-038 | Revise the brief: release-time reconciliation in scope, no-build-step scoped to the published artifact | complete |
 | INFRA-015 | Claims manifest schema reference | complete |
-| INFRA-016 | Stale-claim checker against a newer forqsite commit | planned |
+| INFRA-016 | Stale-claim checker against a newer forqsite commit | complete |
 
 ### CONTENT-038 — Revise the brief
 
