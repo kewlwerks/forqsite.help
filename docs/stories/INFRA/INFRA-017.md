@@ -2,7 +2,7 @@
 id: INFRA-017
 rail: INFRA
 title: Deploy configuration safe for unattended runs
-status: planned
+status: complete
 phase: "14"
 story_class: code
 auth_gated: false

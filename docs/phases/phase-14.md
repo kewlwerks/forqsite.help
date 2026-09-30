@@ -66,7 +66,7 @@ Each story is specced, and the spec reviewed by the operator, before it is built
 
 | ID | Title | Status |
 |----|-------|--------|
-| INFRA-017 | Deploy configuration safe for unattended runs | planned |
+| INFRA-017 | Deploy configuration safe for unattended runs | complete |
 | INFRA-018 | Rollback and a truthful backup report for deploy.sh | planned |
 | INFRA-019 | Checker hardening and a paste-safe report | planned |
 | CONTENT-039 | Claims for the command blocks inside stamped sections | planned |
