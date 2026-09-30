@@ -42,6 +42,18 @@ strings in the full report come from forqsite's history rather than from the man
 target (as given, and its sha) and a renamed path's new name. The stub's rule, "only text
 sourced from the manifest", excludes both, so `--no-commits` omits them too (Instructions 3).
 
+**Operator rulings (2026-09-30), on the spec-writer's questions:**
+1. **Strict `--no-commits`: accepted as specced.** The report omits the target and a renamed
+   path's new name, as well as the `commit:` lines (Instructions 3).
+2. **Set `GIT_NO_LAZY_FETCH=1`** in the checker's child environment, alongside the `GIT_*`
+   scrub (Instructions 2). Without it, a partial (`--filter=blob:none`) clone fetches a
+   missing blob on demand during `show`, which breaks the checker's "never fetches". git
+   2.44 and later honour the variable, and older git ignores it harmlessly. On older git, a
+   partial clone can therefore still fetch lazily, and the docstring says so
+   (Instructions 4).
+3. **The damaged-clone `absent {path}` weakness** is filed by the orchestrator as CER-057,
+   and is not fixed here (§ Out of scope).
+
 **Recon (spec-writer, 2026-09-30, git 2.43, nothing written to the repo).**
 - `git ls-tree -z --name-only <c> -dash/` exits 129 (`unknown switch`), and the checker turns
   that into exit 5. With `--` before the path, it lists the directory.
@@ -53,9 +65,9 @@ sourced from the manifest", excludes both, so `--no-commits` omits them too (Ins
   run an external diff for `--quiet`/`--exit-code`.
 - `GIT_DIR=<plain dir>` makes the unfixed checker exit 2. `GIT_CONFIG_COUNT`/`KEY_0`/`VALUE_0`
   setting `core.abbrev=40` changes its `commit:` lines.
-- A prototype of Instructions 1–5 in a throwaway clone passed the selftest (63 checks). Against
+- A prototype of Instructions 1–5 in a throwaway clone passed the selftest (64 checks). Against
   it, every mutation in § Tests failed its named case. Against the unfixed checker, (g), both
-  (h) env cases, (j) and the (f) argv check failed.
+  (h) env cases, (j) and both new (f) checks failed.
 - The existing header check `first="$(printf '%s\n' "$OUT" | head -1)"` aborted the selftest
   once with exit 141 under `set -o pipefail` (SIGPIPE), and printed no summary. It failed red,
   but a `printf … | grep -q` inside an `if` fails the other way. If `grep -q` exits early, the
@@ -70,10 +82,10 @@ sourced from the manifest", excludes both, so `--no-commits` omits them too (Ins
 ## Ensures
 
 `stale-claims.py` passes `--` before every `ls-tree` path. It runs git with no inherited
-`GIT_*` variable except the three it sets, and passes `--no-ext-diff --no-textconv` on every
-`diff`, `log` and `show`. `--no-commits` prints exactly the report grammar of Instructions 3
+`GIT_*` variable, sets `GIT_NO_LAZY_FETCH=1` alongside the three variables it already sets,
+and passes `--no-ext-diff --no-textconv` on every `diff`, `log` and `show`. `--no-commits` prints exactly the report grammar of Instructions 3
 and never runs `git log`. `scripts/stale-claims-selftest.sh` gains cases (e)+, (g), (h), (i),
-(j) and the (f) argv check with the exact labels in Instructions 5, and passes. Each fix makes
+(j) and the two (f) checks (argv and environment) with the exact labels in Instructions 5, and passes. Each fix makes
 its named case FAIL when reverted (§ Tests). `README.md`, `docs/architecture.md` and CER-052 to
 CER-055 carry the text in Instructions 6 to 8.
 
@@ -86,6 +98,9 @@ CER-055 carry the text in Instructions 6 to 8.
    - Build `self.env` from `os.environ`, dropping every key that starts with `GIT_`. Then set
      the three variables the script already sets (`GIT_LITERAL_PATHSPECS`,
      `GIT_OPTIONAL_LOCKS`, `GIT_TERMINAL_PROMPT`).
+   - Also set `GIT_NO_LAZY_FETCH=1` after the scrub (operator ruling 2), so that an inherited
+     value cannot override it. git 2.44 and later then refuse to fetch a missing object from
+     a promisor remote. Older git ignores the variable.
    - Pass `--no-ext-diff --no-textconv`, before the revisions, in these four calls:
      - the `show` in `blob()`;
      - the `diff --quiet` in `touched()`;
@@ -114,7 +129,13 @@ CER-055 carry the text in Instructions 6 to 8.
    - Document `--no-commits` under the options: what it omits and why. The full report can
      carry forqsite commit subjects, so it is never committed.
    - Extend the "Git is invoked" paragraph: git runs with inherited `GIT_*` variables
-     removed, and with external diff and textconv disabled.
+     removed, with `GIT_NO_LAZY_FETCH=1`, and with external diff and textconv disabled.
+   - Qualify the opening paragraph's "and it never fetches". Say that it sets
+     `GIT_NO_LAZY_FETCH=1`, so on git 2.44 and later a partial clone cannot fetch a missing
+     object on demand. Say too that older git ignores the variable, and a partial clone there
+     can still fetch lazily. The `<target>` option text and the resolution error keep "this
+     script never fetches", because they are about fetching the target, which the script
+     never does.
 
    Leave the exit-code table unchanged, because no code is added.
 5. **Selftest** (`scripts/stale-claims-selftest.sh`). Run every new case before (f), so that
@@ -130,8 +151,9 @@ CER-055 carry the text in Instructions 6 to 8.
      break the short-sha assertions. Give `run_checker` a way to add environment variables for
      one run, and two more modes: `hostile` (clone = the hostile clone below) and `failgit`
      (the failing wrapper first on `PATH`).
-   - **Wrapper.** The existing `git` wrapper also appends its full argv, one invocation per
-     line, to a second log file.
+   - **Wrapper.** The existing `git` wrapper also writes two more logs, one line per
+     invocation: its full argv to a second log file, and the value of `GIT_NO_LAZY_FETCH`
+     as it sees it (`<unset>` when unset) to a third.
    - **Fixture.** At `R`, add `./-dash/a.sql` and `./-dash/b.sql`. The existing verdicts,
      summary and `8 commits` header are unchanged, because no existing claim names `-dash`.
    - **(e), added after the existing runs.** For each target spec — `--output=injected-1`,
@@ -191,6 +213,11 @@ CER-055 carry the text in Instructions 6 to 8.
      every argv-log line whose subcommand (the first word after skipping `-C <dir>`/`-c <kv>`
      and other options) is `diff`, `log` or `show` contains both `--no-ext-diff` and
      `--no-textconv` as whole words. Add `$M_DASH` to the unchanged-manifests list.
+   - **(f), added.** `(f) every git call the checker ran had GIT_NO_LAZY_FETCH=1`: the
+     env log is non-empty, and every line in it is exactly `1`. The selftest reads the
+     variable in the child, not in the script's source, so it checks the environment git
+     actually received. It checks that the variable was set, not a fetch refused, because
+     the fixture is not a partial clone and git older than 2.44 ignores the variable.
 6. **`README.md` § Updating.** After "Its header lists every exit code.", add:
 
    > With `--no-commits`, it prints the same verdicts without the commit lines, the target or
@@ -203,7 +230,9 @@ CER-055 carry the text in Instructions 6 to 8.
      exit code against a fixture repository."
    - Before "Its usage, verdicts and exit codes live in its own header docstring", add: "It
      runs git with every inherited `GIT_*` variable removed and with external diff and
-     textconv disabled (CER-054). `--no-commits` omits everything the report takes from
+     textconv disabled (CER-054). It sets `GIT_NO_LAZY_FETCH=1`, so on git 2.44 and later a
+     partial clone cannot fetch a missing object on demand; older git ignores the variable.
+     `--no-commits` omits everything the report takes from
      forqsite's history rather than from the manifest, so that report can be quoted in a
      tracked file; the full report is never committed."
 8. **`docs/cer/backlog.md`.** Append ` **RESOLVED Phase 14 — INFRA-019.**` to the Finding
@@ -221,7 +250,7 @@ Ideology check:
 
 Preflight note: `-dash`, `injected-1/2`, `hostile-repo`, `src/renamed.txt` and `C-001` are
 fixture names, and `GIT_*`/`HOME`/`XDG_CONFIG_HOME` are environment variables, not repo paths
-or constants. Length: past the ~100-line guideline, because it carries five independent fixes,
+or constants. Length: past the ~100-line guideline, because it carries six independent fixes,
 a report grammar that INFRA-021 consumes, and a mutation list for each.
 
 ## Tests
@@ -234,9 +263,12 @@ out="$(bash scripts/stale-claims-selftest.sh)"; rc=$?; tail -1 <<<"$out"; test "
 test "$(grep -cE "^PASS: \(e\) target '" <<<"$out")" -eq 6
 test "$(grep -cE '^PASS: \((g|h|i|j)\) ' <<<"$out")" -eq 9
 grep -qxF 'PASS: (f) every diff, log and show disables external diff and textconv' <<<"$out"
+grep -qxF 'PASS: (f) every git call the checker ran had GIT_NO_LAZY_FETCH=1' <<<"$out"
 python3 scripts/stale-claims.py --help | grep -qF -- '--no-commits'
+python3 scripts/stale-claims.py --help | grep -qF 'GIT_NO_LAZY_FETCH=1'
 ! tr -s '[:space:]' ' ' < docs/architecture.md | grep -qF 'except 5'
 tr -s '[:space:]' ' ' < docs/architecture.md | grep -qF -- '`--no-commits` omits everything'
+tr -s '[:space:]' ' ' < docs/architecture.md | grep -qF 'It sets `GIT_NO_LAZY_FETCH=1`'
 grep -qF -- 'With `--no-commits`' README.md
 for id in 052 053 054 055; do grep -E "^\| CER-$id \|" docs/cer/backlog.md | grep -qF '**RESOLVED Phase 14 — INFRA-019.**' || exit 1; done
 sh -c 'for t in scripts/*-selftest.sh; do bash "$t" && continue; exit 1; done' >/dev/null
@@ -245,7 +277,7 @@ if git diff --word-diff=porcelain main -- README.md docs/architecture.md docs/ce
    | grep '^+' | grep -v '^+++ ' | grep -nE '/mnt/|/home/|~/'; then exit 1; fi
 ```
 
-On `main`, lines 3–10 fail, which the spec-writer confirmed. Lines 1, 2 and 11–13 are guards
+On `main`, lines 3–13 fail, which the spec-writer confirmed. Lines 1, 2 and 14–16 are guards
 that pass on `main` too. The leak scan diffs by word, so a pre-existing path on an edited line
 cannot match.
 
@@ -268,6 +300,8 @@ the named case FAILs, then restore with `git checkout -- scripts/stale-claims.py
 - Ignore `--no-commits` when printing commit lines, print the target in its header, or keep
   `renamed to <new>` under it: the first two (g) cases.
 - Call `commits()` under `--no-commits` and discard the result: `(g) --no-commits never runs git log`.
+- Do not set `GIT_NO_LAZY_FETCH`, or set it before the scrub, which removes it:
+  `(f) every git call the checker ran had GIT_NO_LAZY_FETCH=1`.
 
 ## Out of scope
 
@@ -277,11 +311,8 @@ the named case FAILs, then restore with `git checkout -- scripts/stale-claims.py
   A clone owned by another user may need the caller's `safe.directory`.
 - The `release.sh` call site, the gitignored full-report file, and any change to exit codes
   (INFRA-021).
-- Two related weaknesses found during recon, which this story does not fix:
-  - `cat-file -e` exits 1 for a blob that the tree names but the object store lacks, so an
-    `absent {path}` check on a damaged clone passes.
-  - A partial (`--filter=blob:none`) clone would lazily fetch a missing blob during `show`,
-    against "never fetches". `GIT_NO_LAZY_FETCH=1` prevents that on git 2.44 and later, but
-    it is not set.
-
-  Both are for the operator to triage.
+- The damaged-clone weakness found in recon: `cat-file -e` exits 1 for a blob that the tree
+  names but the object store lacks, so an `absent {path}` check on a damaged clone passes.
+  It is filed as CER-057 (operator ruling 3), and no fix is specced here.
+- Preventing a lazy fetch on git older than 2.44, which ignores `GIT_NO_LAZY_FETCH`, and
+  detecting or refusing a partial clone.
