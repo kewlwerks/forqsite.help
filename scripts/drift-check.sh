@@ -17,9 +17,11 @@
 #   - Reads the site's base URL from the environment, falling back to a gitignored
 #     scripts/deploy.env when unset (the same file deploy.sh reads). That file is read
 #     as KEY=value data by read-deploy-env.sh (loaded from this script's own directory,
-#     the same reader deploy.sh uses), never executed (CER-024); a non-empty value in it
-#     overrides the environment's, and any line that is not a KEY=value line for a known
-#     key is refused (exit 2) by line number, without printing its content.
+#     the same reader deploy.sh uses), never executed (CER-024). The environment wins
+#     (CER-035): the file is read only when the environment leaves the URL unset, so a
+#     URL the environment sets is used as set, whatever the file holds. Any line that is
+#     not a KEY=value line for a known key is refused (exit 2) by line number, without
+#     printing its content.
 #   - For each bundle: fetches <base-url>/<bundle> to a file (never a shell variable —
 #     command substitution strips trailing newlines and would report a false DRIFT on
 #     a correct site), with an identity content-encoding and no redirect following,
@@ -85,13 +87,18 @@
 #     That is a config-drift check, if one is ever wanted; it is not this one.
 #   - This script never runs docker, docker compose, ssh or scp. It makes an HTTP
 #     request, nothing else.
-#   - curl's redirect-following is off by default; this script does not turn it on, so
-#     a 3xx response is never followed. It is still explicitly detected as a fetch
-#     failure below, because "the bytes this URL returns" is the claim being checked,
-#     and a redirect means some other URL answered it. The redirect target itself is
-#     never printed (INFRA-009): it is origin-controlled, and on the failure this check
-#     is most likely to meet it is the configured origin echoing itself back. Only the
-#     HTTP status code is reported, plus the fact that it was a redirect.
+#   - Both curl calls begin `curl -q --globoff` (CER-034). `-q` must be curl's very
+#     first argument (curl ignores it anywhere else; measured on curl 8.5): it stops
+#     the invoking user's ~/.curlrc from being read, so a `location` line there cannot
+#     turn redirect-following on, and a proxy line there cannot change who answers.
+#     `--globoff` takes the URL literally, so `[..]` or `{..}` in the configured URL is
+#     never expanded as a glob. A 3xx response is therefore never followed. It is
+#     still explicitly detected as a fetch failure below, because "the bytes this URL
+#     returns" is the claim being checked, and a redirect means some other URL
+#     answered it. The redirect target itself is never printed (INFRA-009): it is
+#     origin-controlled, and on the failure this check is most likely to meet it is
+#     the configured origin echoing itself back. Only the HTTP status code is
+#     reported, plus the fact that it was a redirect.
 #   - The provenance sidecar can only ever add a failure because the bundle
 #     match/drift decision is, and remains, served bytes vs `git show <ref>:<bundle>`
 #     alone — the sidecar's repo_commit, its deployed_at, its claimed bundle sha256
@@ -170,8 +177,8 @@ BASE_URL="${FORQSITE_HELP_SITE_URL:-}"
 
 if [ -z "$BASE_URL" ]; then
   if [ -f "scripts/deploy.env" ]; then
-    # Parsed as KEY=value data, never executed (CER-024). A non-empty file value
-    # overrides the environment's; an empty or absent key leaves it in place.
+    # Parsed as KEY=value data, never executed (CER-024). The environment wins
+    # (CER-035): the file is read only because the environment left the URL unset.
     read_deploy_env "scripts/deploy.env" "drift-check.sh" || exit 2
     BASE_URL="${DEPLOY_ENV_SITE_URL:-$BASE_URL}"
   fi
@@ -217,7 +224,7 @@ fetch_bundle() {
   local display_url="<site>/${bundle}"
   local out status
   set +e
-  out="$(curl --silent --show-error \
+  out="$(curl -q --globoff --silent --show-error \
        --proto '=http,https' \
        --max-filesize "$BUNDLE_MAX_BYTES" \
        --header 'Accept-Encoding: identity' \
@@ -265,7 +272,7 @@ fetch_provenance() {
   local url="${BASE_URL}/site-provenance.json"
   local out status
   set +e
-  out="$(curl --silent --show-error \
+  out="$(curl -q --globoff --silent --show-error \
        --proto '=http,https' \
        --max-filesize "$SIDECAR_MAX_BYTES" \
        --header 'Accept-Encoding: identity' \

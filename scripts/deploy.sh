@@ -8,9 +8,12 @@
 #   - Reads deployment target configuration (ssh alias + remote directory) from the
 #     environment, falling back to a gitignored scripts/deploy.env when unset. That file
 #     is read as KEY=value data by read-deploy-env.sh (loaded from this script's own
-#     directory), never executed (CER-024); a non-empty value in it overrides the
-#     environment's, and any line that is not a KEY=value line for a known key is
-#     refused (exit 2) by line number, without printing its content.
+#     directory), never executed (CER-024). The environment wins (CER-035): the file
+#     fills only keys the environment leaves unset, and a key the environment sets is
+#     used as set, whatever the file holds. Any line that is not a KEY=value line for a
+#     known key is refused (exit 2) by line number, without printing its content.
+#   - Refuses (exit 64), straight after argument parsing and before any git or ssh work,
+#     a --ref outside the class REF_RE (below; make-provenance.sh holds the same class).
 #   - Refuses to proceed, before any network contact, if either bundle is untracked at
 #     the ref, or its working-tree or staged content differs from that ref ("dirty").
 #   - Backs up each live bundle on the remote side to <name>.bak-<UTC stamp>, then
@@ -71,6 +74,9 @@
 #      mktemp or sha256sum; a backup name already exists; or, after every file
 #      verified, the marker or prune step failed — the message then says the files
 #      verified and names any stamps pruned before the failure)
+#   64  usage error (unrecognised argument, --ref given with no value, or a --ref
+#       outside ^[A-Za-z0-9_][A-Za-z0-9._/~^-]*$ — letters, digits, _ . / ~ ^ -; may
+#       not begin with . / ~ ^ or -) (CER-015, CER-033)
 #
 # Notes:
 #   - nginx.conf is also bind-mounted into the container, but unlike the two bundles a
@@ -114,7 +120,12 @@ REMOTE_DIR_MISSING_EXIT=42
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --ref)
-      REF="${2:?--ref requires an argument}"
+      if [ "$#" -lt 2 ]; then
+        echo "deploy.sh: --ref requires an argument" >&2
+        echo "usage: deploy.sh [--ref <git-ref>] [--dry-run]" >&2
+        exit 64
+      fi
+      REF="$2"
       shift 2
       ;;
     --dry-run)
@@ -124,10 +135,23 @@ while [ "$#" -gt 0 ]; do
     *)
       echo "deploy.sh: unrecognized argument: $1" >&2
       echo "usage: deploy.sh [--ref <git-ref>] [--dry-run]" >&2
-      exit 2
+      exit 64
       ;;
   esac
 done
+
+# --- --ref class (CER-033) ------------------------------------------------------------
+# Branch, tag and sha forms plus ~/^ revision suffixes; nothing JSON would need to
+# escape, and no leading "-" (which git would read as an option). make-provenance.sh
+# holds the same class, since it publishes the ref in the sidecar. Checked here, before
+# any git or ssh work, so a bad ref can never pass the dirty check, copy both bundles,
+# and only then fail in the sidecar step. The refusal names the class, never the value.
+REF_RE='^[A-Za-z0-9_][A-Za-z0-9._/~^-]*$'
+if ! [[ "$REF" =~ $REF_RE ]]; then
+  echo "deploy.sh: --ref is outside the accepted class (letters, digits, _ . / ~ ^ -; must begin with a letter, digit or _)" >&2
+  echo "usage: deploy.sh [--ref <git-ref>] [--dry-run]" >&2
+  exit 64
+fi
 
 # --- This script's own location, for invoking its sibling make-provenance.sh -------
 # Resolved from this script's own path, not from the deployed repo's root below: the
@@ -151,11 +175,11 @@ DIR="${FORQSITE_HELP_DEPLOY_DIR:-}"
 
 if [ -z "$HOST" ] || [ -z "$DIR" ]; then
   if [ -f "scripts/deploy.env" ]; then
-    # Parsed as KEY=value data, never executed (CER-024). A non-empty file value
-    # overrides the environment's; an empty or absent key leaves it in place.
+    # Parsed as KEY=value data, never executed (CER-024). The environment wins
+    # (CER-035): a file value fills a key only when the environment left it unset.
     read_deploy_env "scripts/deploy.env" "deploy.sh" || exit 2
-    HOST="${DEPLOY_ENV_HOST:-$HOST}"
-    DIR="${DEPLOY_ENV_DIR:-$DIR}"
+    HOST="${HOST:-$DEPLOY_ENV_HOST}"
+    DIR="${DIR:-$DEPLOY_ENV_DIR}"
   fi
 fi
 

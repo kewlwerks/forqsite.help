@@ -10,14 +10,19 @@
 #
 # What it does:
 #   - Resolves the git repository containing the current working directory.
+#   - Refuses (exit 64), straight after argument parsing and before anything is
+#     printed, a --ref outside the class REF_RE (below; deploy.sh holds the same class).
 #   - Resolves the given ref (default HEAD) to its 40-char commit sha.
 #   - Refuses, before printing anything, if either bundle is not tracked at the ref.
 #   - Reads the ref's committer date (UTC) and the current UTC time.
 #   - Computes the sha256 of each bundle's bytes at the ref via `git show <ref>:<bundle>`.
 #   - Emits one JSON object with fixed key order (see docs/stories/INFRA/INFRA-008.md
-#     § Decisions 1) using printf — no jq dependency, and none is needed because every
-#     field in the fixed shape is a hex string, an ISO timestamp, an integer or a fixed
-#     filename, so no field ever needs JSON string escaping.
+#     § Decisions 1) using printf — no jq dependency, and none is needed because no
+#     field ever needs JSON string escaping: every field in the fixed shape is a hex
+#     string, an ISO timestamp, an integer, a fixed filename, or repo_ref, the --ref as
+#     given. repo_ref needs none because the ref is refused unless it matches REF_RE,
+#     whose characters (letters, digits, _ . / ~ ^ -) include no quote, no backslash and
+#     no control character — nothing JSON would need to escape (CER-033).
 #
 # Usage:
 #   make-provenance.sh [--ref <git-ref>]
@@ -25,7 +30,9 @@
 # Exit codes:
 #   0   success — the JSON object was printed to stdout
 #   5   a bundle is not tracked at the given ref (named in the message)
-#   64  usage error (unrecognised argument, or --ref given with no value)
+#   64  usage error (unrecognised argument, --ref given with no value, or a --ref
+#       outside ^[A-Za-z0-9_][A-Za-z0-9._/~^-]*$ — letters, digits, _ . / ~ ^ -; may
+#       not begin with . / ~ ^ or -) (CER-033)
 #
 # Notes:
 #   - This script reads no configuration and contacts nothing. It is a pure function
@@ -59,6 +66,17 @@ while [ "$#" -gt 0 ]; do
       ;;
   esac
 done
+
+# --- --ref class (CER-033), before anything is printed -------------------------------
+# Branch, tag and sha forms plus ~/^ revision suffixes; nothing JSON would need to
+# escape, and no leading "-". deploy.sh holds the same class. The refusal names the
+# class, never the value.
+REF_RE='^[A-Za-z0-9_][A-Za-z0-9._/~^-]*$'
+if ! [[ "$REF" =~ $REF_RE ]]; then
+  echo "make-provenance.sh: --ref is outside the accepted class (letters, digits, _ . / ~ ^ -; must begin with a letter, digit or _)" >&2
+  echo "usage: make-provenance.sh [--ref <git-ref>]" >&2
+  exit 64
+fi
 
 # --- Repo resolution -----------------------------------------------------------------
 REPO_ROOT="$(git rev-parse --show-toplevel)"

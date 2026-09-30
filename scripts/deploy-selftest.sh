@@ -7,7 +7,7 @@
 # is exposed rather than silently passing (CER-025). Contacts no real host.
 #
 # Cases (see docs/stories/INFRA/INFRA-006.md § Tests, INFRA-011 for 6-7, INFRA-012 for 8-12,
-# INFRA-013 for 13):
+# INFRA-013 for 13, INFRA-014 for 14, INFRA-017 for 13f, 15 and 16):
 #   1. missing config   — exit 2, message names both variable names, stub-ssh not invoked
 #   2. dirty tree       — exit 3, message names the dirty bundle, target files untouched
 #   3. happy path       — exit 0, target files match committed bytes, two .bak-<stamp>
@@ -47,8 +47,12 @@
 #                          printed, ssh never invoked
 #      e. env complete    — env HOST and DIR set, malformed file present: exit 0 (the file
 #                          is never read)
-#      f. precedence      — env DIR a nonexistent path, env HOST unset, file sets both:
-#                          exit 0 into the file's DIR
+#      f. precedence, the environment wins (INFRA-017/CER-035):
+#         f1. env DIR a fresh target, env HOST unset, file sets both: exit 0, bytes landed
+#             in the environment's DIR and not in the file's
+#         f2. env HOST valid, env DIR unset, file HOST `-oProxyCommand=false`, file DIR a
+#             fresh target: exit 0 into the file's DIR (a file HOST that won would be
+#             refused by the alias rule, exit 2)
 #  14. transport errors (CER-028, INFRA-014) — the stub emits realistic ssh/remote-shell
 #      text naming the alias or directory in force and exits without running the real
 #      command; each case asserts exit 5, that the configured alias and directory are
@@ -64,6 +68,11 @@
 #      Precondition: the stub is invoked directly in resolve mode and in remote-text
 #      mode; its raw stderr is asserted to contain the alias and the directory,
 #      respectively, so the leak-detection assertions above are not vacuous.
+#  15. usage error (INFRA-017/CER-015) — `--bogus`, and separately a bare `--ref`: each
+#      exit 64, ssh never invoked
+#  16. --ref class (INFRA-017/CER-033) — a real fixture branch named q"b: `--ref 'q"b'`
+#      exits 64, ssh never invoked, the value absent from the output; a branch
+#      rel/a-1.b_2: `--dry-run --ref rel/a-1.b_2` exits 0
 #
 # Determinism: deploy.sh refuses a deploy whose one-second backup stamp already exists in
 # its target (INFRA-012). So every deploy run that can reach the backup step starts from a
@@ -955,29 +964,55 @@ fi
 report "config file, malformed but env complete (exit 0, file never read)" "$ok" "$detail"
 rm -f "$ENV_FILE" "$PAYLOAD_M4"
 
-# --- 13f: precedence — a non-empty file value overrides the environment's ----------
-MISSING_DIR="$WORK_DIR/no-such-target-dir"
-rm -rf "$MISSING_DIR"
+# --- 13f: precedence — the environment wins; the file fills only unset keys ----------
+# (INFRA-017/CER-035, replacing INFRA-013's file-overrides-environment case.)
+PREC_ENV_TARGET="$WORK_DIR/precedence-env-target"
+PREC_FILE_TARGET="$WORK_DIR/precedence-file-target"
+
+# f1: env DIR set, env HOST unset, the file sets both. The environment's DIR is used;
+# the file supplies only HOST.
 {
   echo 'FORQSITE_HELP_DEPLOY_HOST="fixture-host-alias"'
-  printf 'FORQSITE_HELP_DEPLOY_DIR="%s"\n' "$ENV_TARGET"
+  printf 'FORQSITE_HELP_DEPLOY_DIR="%s"\n' "$PREC_FILE_TARGET"
 } > "$ENV_FILE"
-fresh_target "$ENV_TARGET"
+fresh_target "$PREC_ENV_TARGET"
+fresh_target "$PREC_FILE_TARGET"
 set +e
-out_env_f="$( unset FORQSITE_HELP_DEPLOY_HOST; export FORQSITE_HELP_DEPLOY_DIR="$MISSING_DIR"; run_deploy 2>&1 )"
-status_env_f=$?
+out_env_f1="$( unset FORQSITE_HELP_DEPLOY_HOST; export FORQSITE_HELP_DEPLOY_DIR="$PREC_ENV_TARGET"; run_deploy 2>&1 )"
+status_env_f1=$?
 set -e
 ok=0
 detail=""
-if [ "$status_env_f" -ne 0 ]; then
-  ok=1; detail="expected exit 0 into the file's DIR, got $status_env_f: $out_env_f"
-elif ! landed_in "$ENV_TARGET"; then
-  ok=1; detail="committed bytes did not land in the file's DIR"
-elif [ -e "$MISSING_DIR" ]; then
-  ok=1; detail="the environment's DIR was used instead of the file's"
+if [ "$status_env_f1" -ne 0 ]; then
+  ok=1; detail="expected exit 0 into the environment's DIR, got $status_env_f1: $out_env_f1"
+elif ! landed_in "$PREC_ENV_TARGET"; then
+  ok=1; detail="committed bytes did not land in the environment's DIR"
+elif landed_in "$PREC_FILE_TARGET"; then
+  ok=1; detail="the file's DIR overrode the environment's"
 fi
-report "config file, precedence (env HOST unset, env DIR overridden by the file's; exit 0 into the file's DIR)" "$ok" "$detail"
+report "config file, precedence f1 (env DIR set, env HOST unset, file sets both; exit 0 into the environment's DIR, not the file's) INFRA-017/CER-035" "$ok" "$detail"
+
+# f2: env HOST valid, env DIR unset. The file's HOST is one the alias rule refuses, so a
+# file HOST that overrode the environment's would end the run with exit 2.
+{
+  echo 'FORQSITE_HELP_DEPLOY_HOST="-oProxyCommand=false"'
+  printf 'FORQSITE_HELP_DEPLOY_DIR="%s"\n' "$PREC_FILE_TARGET"
+} > "$ENV_FILE"
+fresh_target "$PREC_FILE_TARGET"
+set +e
+out_env_f2="$( unset FORQSITE_HELP_DEPLOY_DIR; export FORQSITE_HELP_DEPLOY_HOST="fixture-host-alias"; run_deploy 2>&1 )"
+status_env_f2=$?
+set -e
+ok=0
+detail=""
+if [ "$status_env_f2" -ne 0 ]; then
+  ok=1; detail="expected exit 0 into the file's DIR with the environment's HOST, got $status_env_f2: $out_env_f2"
+elif ! landed_in "$PREC_FILE_TARGET"; then
+  ok=1; detail="committed bytes did not land in the file's DIR"
+fi
+report "config file, precedence f2 (env HOST set, env DIR unset, file HOST refused by the alias rule; exit 0 into the file's DIR) INFRA-017/CER-035" "$ok" "$detail"
 rm -f "$ENV_FILE"
+rm -rf "$PREC_ENV_TARGET" "$PREC_FILE_TARGET"
 
 export FORQSITE_HELP_DEPLOY_DIR="$FIXTURE_TARGET"
 
@@ -1103,6 +1138,85 @@ if ! printf '%s' "$precond_remotetext_out" | grep -F -- "$PRECOND_DIR" >/dev/nul
 fi
 report "precondition: stub remote-text-mode stderr carries the directory" "$ok" "$detail"
 
+export FORQSITE_HELP_DEPLOY_HOST="fixture-host-alias"
+export FORQSITE_HELP_DEPLOY_DIR="$FIXTURE_TARGET"
+
+# =====================================================================================
+# Case 15: usage error (INFRA-017/CER-015) — bad usage exits 64, never 2 (configuration
+# missing) or 1, and never reaches ssh.
+# =====================================================================================
+check_usage_error() {
+  local name="$1" status="$2" out="$3"
+  local ok=0 detail=""
+  if [ "$status" -ne 64 ]; then
+    ok=1; detail="expected exit 64, got $status: $out"
+  elif [ -f "$SSH_MARKER" ]; then
+    ok=1; detail="stub-ssh marker present — ssh was invoked"
+  fi
+  report "$name" "$ok" "$detail"
+}
+
+USAGE_TARGET="$WORK_DIR/usage-target"
+fresh_target "$USAGE_TARGET"
+export FORQSITE_HELP_DEPLOY_DIR="$USAGE_TARGET"
+
+rm -f "$SSH_MARKER"
+set +e
+out_usage_bogus="$(run_deploy --bogus 2>&1)"
+status_usage_bogus=$?
+set -e
+check_usage_error "usage error, unrecognised argument --bogus (exit 64, no ssh) INFRA-017/CER-015" "$status_usage_bogus" "$out_usage_bogus"
+
+rm -f "$SSH_MARKER"
+set +e
+out_usage_ref="$(run_deploy --ref 2>&1)"
+status_usage_ref=$?
+set -e
+check_usage_error "usage error, --ref with no value (exit 64, no ssh) INFRA-017/CER-015" "$status_usage_ref" "$out_usage_ref"
+
+# =====================================================================================
+# Case 16: --ref class (INFRA-017/CER-033) — a ref outside REF_RE is refused (64) before
+# any git or ssh work, and the refusal never prints the value. The branch is real, so
+# without the check the ref would pass the dirty check and reach ssh.
+# =====================================================================================
+BAD_REF='q"b'
+GOOD_REF='rel/a-1.b_2'
+git -C "$FIXTURE_REPO" branch "$BAD_REF"
+git -C "$FIXTURE_REPO" branch "$GOOD_REF"
+
+fresh_target "$USAGE_TARGET"
+rm -f "$SSH_MARKER"
+set +e
+out_badref="$(run_deploy --ref "$BAD_REF" 2>&1)"
+status_badref=$?
+set -e
+ok=0
+detail=""
+if [ "$status_badref" -ne 64 ]; then
+  ok=1; detail="expected exit 64, got $status_badref"
+elif [ -f "$SSH_MARKER" ]; then
+  ok=1; detail="stub-ssh marker present — ssh was invoked"
+elif printf '%s' "$out_badref" | grep -qF -- "$BAD_REF"; then
+  ok=1; detail="the refusal printed the ref's value"
+fi
+report "--ref class, a branch named q\"b (exit 64, no ssh, value not printed) INFRA-017/CER-033" "$ok" "$detail"
+
+rm -f "$SSH_MARKER"
+set +e
+out_goodref="$(run_deploy --dry-run --ref "$GOOD_REF" 2>&1)"
+status_goodref=$?
+set -e
+ok=0
+detail=""
+if [ "$status_goodref" -ne 0 ]; then
+  ok=1; detail="expected exit 0, got $status_goodref: $out_goodref"
+elif [ -f "$SSH_MARKER" ]; then
+  ok=1; detail="stub-ssh marker present — ssh was invoked during a dry run"
+fi
+report "--ref class, --dry-run --ref rel/a-1.b_2 (exit 0) INFRA-017/CER-033" "$ok" "$detail"
+
+rm -rf "$USAGE_TARGET"
+rm -f "$SSH_MARKER"
 export FORQSITE_HELP_DEPLOY_HOST="fixture-host-alias"
 export FORQSITE_HELP_DEPLOY_DIR="$FIXTURE_TARGET"
 

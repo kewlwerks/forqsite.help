@@ -62,6 +62,16 @@
 #                           line, M3 absent, no request made
 #       e. env complete   — URL in the environment, malformed file present: exit 0 (the
 #                           file is never read)
+#   15. curlrc ignored (INFRA-017/CER-034) — a scratch CURL_HOME holds a .curlrc with
+#                                 `location`; index.html redirects to a fixture path that
+#                                 serves HEAD's index.html bytes; with CURL_HOME set for
+#                                 that run only: exit 4, "redirected" in the output.
+#                                 Precondition (no token): plain curl under the same
+#                                 CURL_HOME follows the redirect and gets 200, so the
+#                                 case is not vacuous
+#   16. no URL globbing (INFRA-017/CER-034) — HEAD's bundles served under a literal
+#                                 `{g}/` directory, site URL `<fixture URL>/{g}`: exit 0,
+#                                 and the request log holds the literal `{g}/index.html`
 #
 # Exits non-zero if any case fails.
 
@@ -719,13 +729,74 @@ rm -f "$ENV_FILE" "$PAYLOAD_M4"
 reset_control
 
 # =====================================================================================
+# Case 15: the invoking user's ~/.curlrc is ignored (INFRA-017/CER-034). A .curlrc with
+# `location` would make curl follow index.html's redirect to a path serving HEAD's
+# bytes, and the run would report ok; with `-q` first, the redirect is a fetch failure.
+# =====================================================================================
+reset_control
+CURLRC_HOME="$WORK_DIR/curl-home"
+mkdir -p "$CURLRC_HOME"
+printf 'location\n' > "$CURLRC_HOME/.curlrc"
+git -C "$FIXTURE_REPO" show HEAD:index.html > "$CONTROL_DIR/override-moved-index.html"
+printf '%s' "$FIXTURE_URL/moved-index.html" > "$CONTROL_DIR/redirect-index.html"
+
+# Precondition: plain curl under this CURL_HOME really does follow the redirect.
+precond_code="$(CURL_HOME="$CURLRC_HOME" curl --silent --output /dev/null --write-out '%{http_code}' "$FIXTURE_URL/index.html" || true)"
+ok=0
+detail=""
+if [ "$precond_code" != "200" ]; then
+  ok=1; detail="plain curl under the scratch CURL_HOME got $precond_code, not 200 — the curlrc case below would be vacuous"
+fi
+report "precondition: plain curl under the scratch CURL_HOME follows the redirect (200)" "$ok" "$detail"
+
+set +e
+out_case15="$(CURL_HOME="$CURLRC_HOME" run_drift_check 2>&1)"
+status_case15=$?
+set -e
+ok=0
+detail=""
+if [ "$status_case15" -ne 4 ]; then
+  ok=1; detail="expected exit 4, got $status_case15: $out_case15"
+elif ! printf '%s' "$out_case15" | grep -q "redirected"; then
+  ok=1; detail="output does not say the fetch was redirected: $out_case15"
+fi
+report "curlrc ignored (a .curlrc with location; exit 4, redirected) INFRA-017/CER-034" "$ok" "$detail"
+rm -rf "$CURLRC_HOME"
+reset_control
+
+# =====================================================================================
+# Case 16: the configured URL is taken literally, never globbed (INFRA-017/CER-034).
+# =====================================================================================
+reset_control
+GLOB_DIR="$SERVE_DIR/{g}"
+mkdir -p "$GLOB_DIR"
+git -C "$FIXTURE_REPO" show HEAD:index.html > "$GLOB_DIR/index.html"
+git -C "$FIXTURE_REPO" show HEAD:gap-handoff.html > "$GLOB_DIR/gap-handoff.html"
+
+set +e
+out_case16="$( export FORQSITE_HELP_SITE_URL="$FIXTURE_URL/{g}"; run_drift_check 2>&1 )"
+status_case16=$?
+set -e
+ok=0
+detail=""
+if [ "$status_case16" -ne 0 ]; then
+  ok=1; detail="expected exit 0, got $status_case16: $out_case16"
+elif ! grep -qxF '{g}/index.html' "$REQUEST_LOG"; then
+  ok=1; detail="the request log has no literal {g}/index.html line: $(cat "$REQUEST_LOG")"
+fi
+report "no URL globbing (site URL ending /{g}; exit 0, literal {g}/index.html requested) INFRA-017/CER-034" "$ok" "$detail"
+rm -rf "$GLOB_DIR"
+reset_control
+
+# =====================================================================================
 echo ""
 echo "drift-check-selftest: $PASS_COUNT passed, $FAILURES failed"
 
 echo ""
 echo "--- captured output, all cases (for the hygiene grep) ---"
 printf '%s\n' "$out_case1" "$out_case2" "$out_case3" "${out_case4:-}" "$out_case5" "$out_case6" "$out_case7" "$out_case8" "$out_case9" "$out_case10" "$out_case11" "$out_case12" "$out_case13" \
-  "$out_case14a1" "$out_case14a2" "$out_case14a3" "$out_case14b" "$out_case14c" "$out_case14e"
+  "$out_case14a1" "$out_case14a2" "$out_case14a3" "$out_case14b" "$out_case14c" "$out_case14e" \
+  "$out_case15" "$out_case16"
 echo "--- end captured output ---"
 
 if [ "$FAILURES" -ne 0 ]; then

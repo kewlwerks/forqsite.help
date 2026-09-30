@@ -174,7 +174,9 @@ alias), `FORQSITE_HELP_DEPLOY_DIR` (deploy.sh, remote per-site directory) and
 `FORQSITE_HELP_SITE_URL` (drift-check.sh, base URL to fetch served bytes from). The file
 is parsed as `KEY=value` data for those known keys by one shared reader loaded from the
 scripts' own directory, never executed, so its values stay literal text, and any other
-line is refused by line number without printing its content (CER-024).
+line is refused by line number without printing its content (CER-024). The environment
+wins: the file fills only keys the environment leaves unset, and never overrides a key the
+environment sets (CER-035).
 
 **The provenance sidecar** (`site-provenance.json`, INFRA-008). `make-provenance.sh`
 generates it and `deploy.sh` writes it last, deliberately: it is deployed only after both
@@ -195,7 +197,8 @@ restating those tables here would make this doc a second writer of a fact each s
 already owns, and the numbers would drift the first time one is added. At class level, the
 contract all three share: `0` means the invariant the script asserts held; every distinct
 failure mode gets its own code; and a usage error never shares a code with a condition of
-substance (CER-015 records where `deploy.sh` does not yet hold this).
+substance (since INFRA-017, `deploy.sh` holds this too: bad usage exits `64`, as it
+already did in `drift-check.sh` and `make-provenance.sh`).
 
 **Verification record — 2026-09-21.** By hand, before this phase's scripts existed: the
 deployment host was found serving `index.html` as committed at `5ec8194` and
