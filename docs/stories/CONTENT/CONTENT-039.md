@@ -2,7 +2,7 @@
 id: CONTENT-039
 rail: CONTENT
 title: Claims for the command blocks inside stamped sections
-status: planned
+status: complete
 phase: "14"
 story_class: content
 auth_gated: false
