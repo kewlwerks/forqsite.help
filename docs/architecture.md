@@ -131,10 +131,15 @@ nothing. It writes nothing: not the manifest, not the pages, not the clone; rewr
 stale claim is a reviewed story. Its symbol matching normalises whitespace on purpose
 (CER-011), so a reindent or reflow does not fail a claim whose meaning is unchanged and an
 absent literal cannot hide behind a line break. It reads no page, so the inert-script
-rendering concern of CER-012 does not arise. Its usage, verdicts and exit codes live in its
-own header docstring, per the exit-code contract below; `scripts/stale-claims-selftest.sh`
-exercises each verdict and every exit code except 5 (an unexpected git failure, untested:
-CER-052) against a fixture repository.
+rendering concern of CER-012 does not arise. It runs git with every inherited `GIT_*`
+variable removed and with external diff and textconv disabled (CER-054). It sets
+`GIT_NO_LAZY_FETCH=1`, so on git 2.44 and later a partial clone cannot fetch a missing
+object on demand; older git ignores the variable. `--no-commits` omits everything the
+report takes from forqsite's history rather than from the manifest, so that report can be
+quoted in a tracked file; the full report is never committed. Its usage, verdicts and exit
+codes live in its own header docstring, per the exit-code contract below;
+`scripts/stale-claims-selftest.sh` exercises each verdict and every exit code against a
+fixture repository.
 
 **Deploy, drift-check and provenance scripts** (INFRA-006, INFRA-007, INFRA-008, Phase 11).
 Three scripts, each documented in full in its own header comment — this section points at

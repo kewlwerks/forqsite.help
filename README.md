@@ -58,6 +58,10 @@ FORQSITE_CLONE=<path to your forqsite clone> python3 scripts/stale-claims.py <co
 
 It exits 0 when nothing is stale, and 3 when a claim is stale or a closed gap has
 reopened. Its header lists every exit code.
+With `--no-commits`, it prints the same verdicts without the commit lines, the target or
+a renamed path's new name, so the report holds only text from the manifest and can be
+quoted in a tracked file. Never commit the full report: forqsite commit subjects can
+name a deployment.
 
 ### Editing the bundles
 

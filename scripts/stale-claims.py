@@ -5,11 +5,14 @@ docs/claims-manifest.json pins every published claim to one forqsite release com
 (`release.commit`). At release time, this script re-checks every claim, and every
 `closed[]` record, at a newer forqsite commit (the target), and reports which ones went
 stale. It reports and never edits: it writes nothing to the manifest, the pages or the
-clone, and it never fetches. Rewriting a stale claim takes judgment, and is a reviewed
-story (INFRA-016).
+clone, and it never fetches on purpose. It sets GIT_NO_LAZY_FETCH=1, so on git 2.44 and
+later a partial clone cannot fetch a missing object on demand either; older git ignores
+the variable, and a partial clone there can still fetch a missing object lazily.
+Rewriting a stale claim takes judgment, and is a reviewed story (INFRA-016).
 
 Usage:
-    FORQSITE_CLONE=<path to a forqsite clone> stale-claims.py [--manifest FILE] <target>
+    FORQSITE_CLONE=<path to a forqsite clone> stale-claims.py [--manifest FILE]
+                                                             [--no-commits] <target>
 
     <target>          any commit-ish the clone resolves (a sha, a tag such as a
                       checkpoint tag, a remote-tracking branch). No default. If the clone
@@ -17,6 +20,13 @@ Usage:
                       fetches.
     --manifest FILE   the claims manifest. Defaults to docs/claims-manifest.json, resolved
                       from this script's own location, not the current directory.
+    --no-commits      omit everything the report takes from forqsite's history rather
+                      than from the manifest: the `commit:` lines, the target (as given
+                      and its sha) in the header, and a renamed path's new name (the
+                      failure line says only `renamed`). The report then holds only
+                      manifest text (ids, verdicts, paths, symbols) and fixed wording, so
+                      it can be quoted in a tracked file. Forqsite commit subjects can
+                      name a deployment, so the full report is never committed.
 
     The clone is named only by the FORQSITE_CLONE environment variable. There is no flag
     for it, so a local path never lands in shell-quoted documentation, and no message
@@ -59,6 +69,9 @@ Verdicts:
 
 Report (stdout): a header line, then one block per record in manifest order (claims,
 then closed records) whose first line begins `<id> <verdict>`, then a summary line.
+With --no-commits the header is
+`stale-claims: <release.repo> <release.commit[:8]> -> <N> commits later (--no-commits)`,
+and git log is never run.
 
 Exit codes:
     0   nothing is stale or reopened (unverified claims do not fail the run)
@@ -71,7 +84,10 @@ Exit codes:
     64  usage: no target, an extra argument, or an unknown option
 
 Git is invoked as `git -C <clone> <subcommand>` via PATH, with read-only subcommands only:
-rev-parse, cat-file, merge-base, diff, log, show, ls-tree, rev-list.
+rev-parse, cat-file, merge-base, diff, log, show, ls-tree, rev-list. It runs with every
+inherited GIT_* environment variable removed (CER-054), with GIT_NO_LAZY_FETCH=1, and with
+external diff and textconv disabled (--no-ext-diff --no-textconv on every diff, log and
+show). The clone's own config and the system config still apply.
 """
 
 import json
@@ -92,7 +108,7 @@ DEFAULT_MANIFEST = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), '..', 'docs', 'claims-manifest.json')
 
 USAGE = ('usage: FORQSITE_CLONE=<path to a forqsite clone> '
-         'stale-claims.py [--manifest FILE] <target>')
+         'stale-claims.py [--manifest FILE] [--no-commits] <target>')
 
 
 class Fail(Exception):
@@ -111,6 +127,7 @@ def parse_args(argv):
     """Hand-parsed, as bundle-template.py does: argparse would exit 2 on a usage error,
     and 2 is the configuration code here."""
     manifest = None
+    no_commits = False
     positional = []
     i = 0
     options_done = False
@@ -128,6 +145,8 @@ def parse_args(argv):
             i += 1
         elif not options_done and arg.startswith('--manifest='):
             manifest = arg[len('--manifest='):]
+        elif not options_done and arg == '--no-commits':
+            no_commits = True
         elif not options_done and arg.startswith('-'):
             die(EXIT_USAGE, f'unknown option {arg}\n{USAGE}')
         else:
@@ -137,7 +156,7 @@ def parse_args(argv):
         die(EXIT_USAGE, f'expected exactly one <target>\n{USAGE}')
     if positional[0].startswith('-') or not positional[0]:
         die(EXIT_USAGE, f'invalid <target>\n{USAGE}')
-    return manifest or DEFAULT_MANIFEST, positional[0]
+    return manifest or DEFAULT_MANIFEST, positional[0], no_commits
 
 
 class Git:
@@ -149,10 +168,13 @@ class Git:
 
     def __init__(self, clone):
         self.clone = clone
-        self.env = dict(os.environ)
+        # Inherited GIT_* variables (GIT_DIR, GIT_CONFIG_*, GIT_EXTERNAL_DIFF, ...) would
+        # redirect or reconfigure git, so none reaches it (CER-054).
+        self.env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
         self.env['GIT_LITERAL_PATHSPECS'] = '1'  # a path is a path, never a glob
         self.env['GIT_OPTIONAL_LOCKS'] = '0'     # never refresh the index
         self.env['GIT_TERMINAL_PROMPT'] = '0'
+        self.env['GIT_NO_LAZY_FETCH'] = '1'      # git >= 2.44: no on-demand promisor fetch
         self._blobs = {}
 
     def run(self, *args):
@@ -185,7 +207,7 @@ class Git:
             if code != 0 or out.decode().strip() != 'blob':
                 self._blobs[key] = None
             else:
-                data = self.must('show', f'{commit}:{path}')
+                data = self.must('show', '--no-ext-diff', '--no-textconv', f'{commit}:{path}')
                 self._blobs[key] = data.decode('utf-8', errors='replace')
         return self._blobs[key]
 
@@ -194,19 +216,20 @@ class Git:
         return code == 0
 
     def count(self, commit, path, suffix):
-        out = self.must('ls-tree', '-z', '--name-only', commit, f'{path}/')
+        out = self.must('ls-tree', '-z', '--name-only', commit, '--', f'{path}/')
         names = [n for n in out.decode('utf-8', errors='replace').split('\0') if n]
         return sum(1 for n in names if n.endswith(suffix))
 
     def touched(self, release, target, path):
-        code, _ = self.run('diff', '--quiet', release, target, '--', path)
+        code, _ = self.run('diff', '--quiet', '--no-ext-diff', '--no-textconv', release, target,
+                           '--', path)
         if code not in (0, 1):
             raise Fail(EXIT_GIT, f'git diff failed unexpectedly in {CLONE_NAME}')
         return code == 1
 
     def renames(self, release, target):
         out = self.must('diff', '-z', '-M', '--name-status', '--diff-filter=R',
-                        release, target)
+                        '--no-ext-diff', '--no-textconv', release, target)
         fields = out.decode('utf-8', errors='replace').split('\0')
         result = {}
         i = 0
@@ -219,7 +242,8 @@ class Git:
         return result
 
     def commits(self, release, target, paths):
-        out = self.must('log', '--format=%h %s', f'{release}..{target}', '--', *paths)
+        out = self.must('log', '--no-ext-diff', '--no-textconv', '--format=%h %s',
+                        f'{release}..{target}', '--', *paths)
         return [line for line in out.decode('utf-8', errors='replace').splitlines() if line]
 
 
@@ -232,14 +256,15 @@ def matches(symbol, text):
     return norm(symbol) in norm(text), symbol in text
 
 
-def check_record(git, rec, target, renames):
+def check_record(git, rec, target, renames, no_commits=False):
     """Run every check in rec at target. Returns (failures, notes, paths, n_checks)."""
     failures, notes, paths = [], [], []
 
     def missing(kind, path):
         line = f'{kind} {path}: path missing at target'
         if path in renames:
-            line += f', renamed to {renames[path]}'
+            # The new name comes from forqsite's history, not the manifest.
+            line += ', renamed' if no_commits else f', renamed to {renames[path]}'
         return line
 
     evidence = rec.get('evidence') or []
@@ -325,7 +350,7 @@ def open_clone():
     return git
 
 
-def run(manifest_path, target_arg):
+def run(manifest_path, target_arg, no_commits=False):
     git = open_clone()
     manifest = load_manifest(manifest_path)
     release_arg = manifest['release']['commit']
@@ -350,8 +375,13 @@ def run(manifest_path, target_arg):
     n_commits = int(git.must('rev-list', '--count', f'{release}..{target}').decode().strip())
     renames = git.renames(release, target)
 
-    lines = [f'stale-claims: {repo} {release[:8]} -> {target_arg} ({target[:8]}), '
-             f'{n_commits} commits']
+    if no_commits:
+        # Manifest text only: no target as given, no target sha.
+        lines = [f'stale-claims: {repo} {release_arg[:8]} -> {n_commits} commits later '
+                 '(--no-commits)']
+    else:
+        lines = [f'stale-claims: {repo} {release[:8]} -> {target_arg} ({target[:8]}), '
+                 f'{n_commits} commits']
     tally = {'untouched': 0, 'holds': 0, 'stale': 0, 'unverified': 0}
     closed_tally = {'closed': 0, 'reopened': 0}
     failing = False
@@ -363,7 +393,7 @@ def run(manifest_path, target_arg):
         lines.append(first)
         for f in failures:
             lines.append(f'  fail: {f}')
-        if verdict in ('stale', 'reopened'):
+        if verdict in ('stale', 'reopened') and not no_commits:
             commits = git.commits(release, target, paths) if paths else []
             if commits:
                 lines.extend(f'  commit: {c}' for c in commits)
@@ -371,7 +401,7 @@ def run(manifest_path, target_arg):
                 lines.append('  commit: (none in range touched these paths)')
 
     for rec in manifest['claims']:
-        failures, notes, paths, n_checks = check_record(git, rec, target, renames)
+        failures, notes, paths, n_checks = check_record(git, rec, target, renames, no_commits)
         touched = [p for p in paths if git.touched(release, target, p)]
         reasons = []
         if rec.get('result') == 'unverified':
@@ -397,7 +427,7 @@ def run(manifest_path, target_arg):
             lines.append(f'  marker: {rec.get("marker", "(none)")}')
 
     for rec in manifest.get('closed', []):
-        failures, notes, paths, n_checks = check_record(git, rec, target, renames)
+        failures, notes, paths, n_checks = check_record(git, rec, target, renames, no_commits)
         verdict = 'reopened' if failures or n_checks == 0 else 'closed'
         closed_tally[verdict] += 1
         failing = failing or verdict == 'reopened'
@@ -422,9 +452,9 @@ def main(argv):
         sys.stdout.reconfigure(errors='replace')
     except AttributeError:
         pass
-    manifest_path, target = parse_args(argv)
+    manifest_path, target, no_commits = parse_args(argv)
     try:
-        return run(manifest_path, target)
+        return run(manifest_path, target, no_commits)
     except Fail as e:
         die(e.code, e.message)
 
