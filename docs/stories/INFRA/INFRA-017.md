@@ -68,6 +68,8 @@ the new behaviour, and every existing selftest still passes. The fixes are:
    `--ref` that does not match it with exit `64`. The class keeps branch, tag and sha forms plus
    `~`/`^` revision suffixes. It excludes every character JSON would need to escape, and a
    leading `-`. The refusal message names the class, never the value.
+   Operator ruling 2026-09-30: dropping reflog syntax (`@{u}`, `HEAD@{1}`) and refs that start
+   with `.`, `/` or `-` is accepted. The release job passes `rel-<sha>` tags and `HEAD`.
    - `make-provenance.sh`: check straight after argument parsing, before anything is printed.
      Its header claim that no field needs escaping is then true; say why, and add the class to
      its `64` row.
