@@ -322,6 +322,7 @@ Both rules were ruled by the operator on 2026-09-29 in INFRA-016's spec.
 - CONTENT-030 specs `"evidence": []` with an explanatory note for a claim with no findable evidence. No manifest has used it.
 - A `closed[]` record has no `page`, `quote`, `stamp` or `location`.
 - What `result` means after a restamp, and how a `closed[]` record is checked for reopening, were unspecified until INFRA-016; § Restamps and closed records states both.
+- `added` means new page text: a quote the page did not carry before, as CONTENT-035's GAP entries were. A claim that newly covers unchanged page text under an existing stamp is `open`. A restamp derives the same, because its test compares each quote against the previous release's pages, so § Restamps and closed records' "a new claim is `added`" applies to a claim whose quote is new. Ruled by the operator on 2026-09-30 in CONTENT-039's spec, where the Values row for `added` names only GAP entries and § Restamps and closed records covers only restamps.
 
 ---
 

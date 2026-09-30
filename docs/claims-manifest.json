@@ -1303,6 +1303,180 @@
       "stamp": "S-07",
       "result": "added",
       "note": "ADDED: verified at the release commit on 2026-09-25 by running backup.sh and restore.sh against stub pg_dump and psql binaries that record their arguments; every call received the password. pg_dump and psql were not run against a server. The footer stamp's printed date, 24 september 2026, is the earlier verification of the entries it already covered."
+    },
+    {
+      "id": "C-039",
+      "page": "index.html",
+      "location": "Operations route, \"Upgrade\" section, the six-command block under the section's opening paragraph",
+      "claim": "An upgrade is forqsite's documented single-instance sequence: git pull, a dependency install, pnpm db:migrate, pnpm build, then a restart of the app and its scheduler, which costs about 10–20 seconds of downtime; the install is frozen to the lockfile, as forqsite's own first-run install is.",
+      "quote": "pnpm install --frozen-lockfile\npnpm db:migrate\npnpm build",
+      "evidence": [
+        {
+          "path": "docs/operator-runbook.md",
+          "symbol": "### 12.1 Standard upgrade (single instance)"
+        },
+        {
+          "path": "docs/operator-runbook.md",
+          "symbol": "pm2 restart forqsite   # or your process manager"
+        },
+        {
+          "path": "docs/operator-runbook.md",
+          "symbol": "Expect ~10–20 seconds of downtime while the process restarts."
+        },
+        {
+          "path": "scripts/firstrun.sh",
+          "symbol": "pnpm install --frozen-lockfile"
+        },
+        {
+          "path": "package.json",
+          "symbol": "\"db:migrate\": \"dotenv -e .env.local -- drizzle-kit migrate\","
+        },
+        {
+          "path": "package.json",
+          "symbol": "\"build\": \"dotenv -e .env.local -- next build\","
+        },
+        {
+          "path": "package.json",
+          "symbol": "\"scheduler\": \"tsx scripts/scheduler.ts\","
+        }
+      ],
+      "stamp": "S-02",
+      "result": "open",
+      "note": "Verified at the release commit on 2026-09-30, when this block was brought under the section's stamp; the stamp's printed date, 2026-09-24, is the earlier verification of the claims it already covered. The block departs from the runbook's section 12.1 where this site makes its own choice, not a forqsite claim: it restarts this site's systemd units, named on the Process supervision route, where the runbook writes pm2 restart forqsite or your process manager, and it installs with --frozen-lockfile, as forqsite's first-run script does, where the runbook writes pnpm install. The cd path is this site's install location from the Install sequence route."
+    },
+    {
+      "id": "C-040",
+      "page": "index.html",
+      "location": "Operations route, \"Provider packs (condensed)\" section, the log command under \"WHEN THE BUILD DID NOT INCLUDE THE PACK\"",
+      "claim": "The rejection of a pack whose client component is missing from the generated client registry is logged with a [block-registry] prefix, so grepping the process log for that prefix finds it.",
+      "quote": "journalctl -u forqsite | grep '\\[block-registry\\]'",
+      "evidence": [
+        {
+          "path": "src/services/block-registry/loader.ts",
+          "symbol": "`[block-registry] Provider \"${provider.id}\" rejected: block type(s) declare a ` +"
+        },
+        {
+          "path": "src/services/block-registry/loader.ts",
+          "symbol": "`clientComponent.importPath not present in the generated client registry ` +"
+        }
+      ],
+      "stamp": "S-03",
+      "result": "open",
+      "note": "Verified at the release commit on 2026-09-30, when this block was brought under the section's stamp; the stamp's printed date, 2026-09-24, is the earlier verification of the claims it already covered. The unit name is this site's own systemd unit from the Process supervision route, not a forqsite claim. The page's grep pattern was run against a line that begins with the logged prefix, and matched it."
+    },
+    {
+      "id": "C-041",
+      "page": "index.html",
+      "location": "Operations route, \"Upgrade\" section, the first paragraph under \"ROLLING BACK\"",
+      "claim": "Rolling back is putting the previous commit, lockfile and provider manifest back, then a frozen-lockfile install, pnpm build and a restart; that restores the build and not the schema, because forqsite has no down migration and no rollback script.",
+      "quote": "that returns the artifact and only the artifact",
+      "evidence": [
+        {
+          "path": "scripts/firstrun.sh",
+          "symbol": "pnpm install --frozen-lockfile"
+        },
+        {
+          "path": "package.json",
+          "symbol": "\"build\": \"dotenv -e .env.local -- next build\","
+        },
+        {
+          "path": "next.config.mjs",
+          "symbol": "process.env.PROVIDER_MANIFEST_PATH ?? path.resolve(process.cwd(), 'config/providers.json')"
+        },
+        {
+          "path": "package.json",
+          "symbol": "\"db:migrate\": \"dotenv -e .env.local -- drizzle-kit migrate\","
+        }
+      ],
+      "stamp": "S-02",
+      "result": "open",
+      "absent": [
+        {
+          "path": "package.json",
+          "symbol": "rollback"
+        }
+      ],
+      "note": "Verified at the release commit on 2026-09-30, when this paragraph was brought under the section's stamp; the stamp's printed date, 2026-09-24, is the earlier verification of the claims it already covered. The restart is this site's systemd restart from the Upgrade block."
+    },
+    {
+      "id": "C-042",
+      "page": "index.html",
+      "location": "Operations route, \"Provider packs (condensed)\" section, install step 2",
+      "claim": "A reviewed pack is installed by scoped package name and version from the pack store, after its sha512 is checked against the one handed over, and the resulting lockfile entry must carry both integrity and tarball; installing the tarball from disk with a file: specifier is withdrawn, and forqsite's pin check reports it.",
+      "quote": "Installing the tarball from disk",
+      "evidence": [
+        {
+          "path": "docs/operator-runbook.md",
+          "symbol": "pnpm add -w \"@forqsite-packs/<name>@<version>\""
+        },
+        {
+          "path": "docs/operator-runbook.md",
+          "symbol": "Verify the sha512 against the one handed over first, and confirm"
+        },
+        {
+          "path": "docs/operator-runbook.md",
+          "symbol": "the resulting lockfile entry carries **both** `integrity` and `tarball` before continuing"
+        },
+        {
+          "path": "docs/operator-runbook.md",
+          "symbol": "**`pnpm add -w file:/path/to/<received-pack>.tgz` is withdrawn**, and is named here rather than"
+        },
+        {
+          "path": "docs/operator-runbook.md",
+          "symbol": "reports a `file:` specifier as a `file-specifier` finding."
+        },
+        {
+          "path": "package.json",
+          "symbol": "\"verify:provider-pins\": \"tsx scripts/verify-provider-pins.ts\","
+        },
+        {
+          "path": "scripts/verify-provider-pins.ts",
+          "symbol": "findings.push({ file, line: lineNo, kind: 'file-specifier', match: m[0] })"
+        },
+        {
+          "path": "docs/handoff/forqsite-sdk-handover-contract.md",
+          "symbol": "**That step 9 no longer says this**"
+        }
+      ],
+      "stamp": "S-03",
+      "result": "changed",
+      "note": "CHANGED: step 2 said \"pnpm add -w file:/path/to/pack.tgz — after verifying its sha512 against what the author handed over\"; at the release commit the operator runbook's section 14.2 installs by scoped package name, pnpm add -w \"@forqsite-packs/<name>@<version>\", withdraws the file: tarball install by name, and requires the lockfile entry to carry integrity and tarball, and the handover contract's step 9, which the runbook names as authoritative, was rewritten the same way. Step 2 now gives the scoped install, keeps the sha512 check, names the lockfile check, and says the file: install is withdrawn. forqsite's own platform-admin install page still prints the withdrawn command. Verified on 2026-09-30; the stamp's printed date, 2026-09-24, is the earlier verification of the claims it already covered."
+    },
+    {
+      "id": "C-043",
+      "page": "index.html",
+      "location": "Operations route, \"Provider packs (condensed)\" section, install step 4",
+      "claim": "After the manifest entry, pnpm build then a restart is all it takes: the build regenerates the server registry, the client-component registry and the transpile list from the provider manifest, with no hand edit to any source file, and a pack the install page lists as not registered means the generated registry is stale and needs a rebuild.",
+      "quote": "The build regenerates both registries and the transpile list from the manifest",
+      "evidence": [
+        {
+          "path": "package.json",
+          "symbol": "\"prebuild\": \"pnpm build:sdk && dotenv -e .env.local -- tsx scripts/generate-client-registry.ts\","
+        },
+        {
+          "path": "docs/operator-runbook.md",
+          "symbol": "The build's prebuild step regenerates `src/services/block-registry/server-provider-registry.ts`,"
+        },
+        {
+          "path": "docs/operator-runbook.md",
+          "symbol": "`src/components/blocks/client-registry.ts` and the transpile list from the manifest — there is"
+        },
+        {
+          "path": "docs/operator-runbook.md",
+          "symbol": "no hand-edited registry and no `next.config.mjs` edit (BLOCKS-025)"
+        },
+        {
+          "path": "docs/operator-runbook.md",
+          "symbol": "Then restart the application"
+        },
+        {
+          "path": "src/app/platform-admin/block-providers/install/page.tsx",
+          "symbol": " * the GENERATED server registry, so \"not registered\" means \"stale — rebuild\"."
+        }
+      ],
+      "stamp": "S-03",
+      "result": "open",
+      "note": "Verified at the release commit on 2026-09-30, when this step was brought under the section's stamp; the stamp's printed date, 2026-09-24, is the earlier verification of the claims it already covered. The regenerated registries are generated files that forqsite commits; the page's no source file is edited means no hand edit."
     }
   ]
 }
