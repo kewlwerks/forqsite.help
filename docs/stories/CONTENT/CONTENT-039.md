@@ -43,6 +43,10 @@ Phase 14 plan: approved by the operator on 2026-09-30, synthesized from two inde
    unchecked command inside a stamped section, whether or not the command is in a `<pre>`
    block. So install step 2 (`pnpm add -w file:…tgz` and its sha512 check) gets a claim,
    and S-02 and S-03 were swept again for any other inline command text.
+3. **Widened: the site never shows both install forms.** The same withdrawn install on the
+   unstamped Provider lifecycle route is fixed in this story too (Instructions 2). The
+   upstream admin page that still prints it is CER-058, for Phase 15, and is not specced
+   here.
 
 **What the sweep found (extracted template, 2026-09-30).** Each section is bounded by its
 own `<h2>` and its own stamp text. S-02 and S-03 each hold one `<pre>` block, 2 in total, as
@@ -78,6 +82,36 @@ install page still prints the withdrawn command, which is a forqsite-side incons
 this story rewrites step 2, and C-042 records it as `changed`. The other four blocks hold at
 the pin.
 
+**The withdrawn form elsewhere (ruling 3; both extracted templates swept on 2026-09-30).**
+`pnpm add -w file:` occurs twice in `index.html` and never in `gap-handoff.html`:
+- S-03 install step 2, fixed above.
+- The Provider lifecycle route's "The swap" step 2. It is fixed with the same runbook §14.2
+  evidence as C-042.
+
+That route's intro also says the seven steps are "the same sequence the platform prints on
+its own install page … if the three ever disagree, the platform is right". Once step 2 is
+fixed, that sentence is false: at the pin the platform page prints the withdrawn form (CER-058),
+and the runbook names the handover contract as the authoritative recipe. So the intro is
+rewritten to point at the runbook.
+
+**No claim for the Provider lifecycle fix.** Every claim must cite the stamp that covers it
+(§ Claims manifest schema, `claims[].stamp`), and no stamp covers that route. Adding a stamp
+is restamp work, which belongs to INFRA-020 and Phase 15, not this story. CER-046's Phase 15
+remainder, bringing command text outside the stamped sections under the manifest, is the
+follow-up that will give it a stamp and a claim. Until then the Tests guard it directly: the
+withdrawn form must appear in neither template.
+
+**Not fixed, with reasons.** Two further passages mention pack tarballs from disk, but not
+the install command:
+- `index.html` Backup & recovery "4 — Config & packs": "pack tarballs you installed from
+  `.tgz` files".
+- The backup-coverage row in that route's script: ".tgz packs installed from disk".
+
+Both are backup inventory, not an install instruction. Whether a store-pinned pack still
+needs its tarball in the backup is a separate question about restores. It needs its own
+evidence and belongs with the Backup route's Phase 15 pass. The withdrawn-form check does not
+match them.
+
 ## Requires
 
 - CONTENT-038 is merged (the manifest holds C-001 to C-038, and CER-046 is in Do Later).
@@ -95,12 +129,14 @@ element holding inline command text, unless each of its commands appears verbati
 covered `<pre>` of the same section. Each new quote occurs once in the extracted template,
 inside its own section. Each new claim is `open` if its quote is unchanged page text and
 `changed` (with a `CHANGED:` note) if it is not. Every evidence literal is a `git grep -F`
-hit at `release.commit`, and every `absent` literal is a verified miss there. Install step
-2's command equals the runbook §14.2 command at the pin.
+hit at `release.commit`, and every `absent` literal is a verified miss there.
 
-In `index.html` only install step 2 changes, and `#ops` renders the new step with
-`<script>` stripped first. `gap-handoff.html` is byte-identical to base, and both bundles
-verify. `docs/architecture.md` gains exactly one bullet, at the end of § Disagreements and
+In `index.html` only three elements change: S-03 install step 2, and the Provider lifecycle
+swap's intro paragraph and step 2. Both rewritten steps give the runbook §14.2 command at
+the pin. The withdrawn `pnpm add … file:` form appears in neither extracted template after
+whitespace normalisation and entity decoding. `#ops` and `#providers` render the new install
+and not the old, with `<script>` stripped first. `gap-handoff.html` is byte-identical to base, and both
+bundles verify. `docs/architecture.md` gains exactly one bullet, at the end of § Disagreements and
 unspecified behaviour. The CER-046 row gains one appended note, and nothing else in the
 backlog changes. `scripts/stale-claims.py <release.commit>` exits 0 and reports all five
 new claims `untouched`.
@@ -308,28 +344,56 @@ Forbidden proxy:
      §12.1), and why the stamp's printed date is earlier.
    - No stamp changes. Every claim was verified at `release.commit`, which both stamps
      already name.
-2. **Page: install step 2.** Follow `docs/architecture.md` § Editing procedure
+2. **Pages (ruling 3).** Follow `docs/architecture.md` § Editing procedure
    (`bundle-template.py extract`, edit, `inject`, `verify`). In the extracted `index.html`
-   template, replace this exact substring, which occurs once:
+   template, make these three replacements. Each old substring occurs exactly once.
+
+   (a) S-03 install step 2. Replace
 
    ```html
    <span style="font-family:'Geist Mono',monospace; font-size:12.5px;">pnpm add -w file:/path/to/pack.tgz</span> &mdash; after verifying its sha512 against what the author handed over.</span></div>
    ```
 
-   with:
+   with
 
    ```html
    <span style="font-family:'Geist Mono',monospace; font-size:12.5px;">pnpm add -w "@forqsite-packs/&lt;name&gt;@&lt;version&gt;"</span> &mdash; by package name from the pack store, after verifying its sha512 against what the author handed over. The lockfile entry must then carry both <span style="font-family:'Geist Mono',monospace; font-size:12.5px;">integrity</span> and <span style="font-family:'Geist Mono',monospace; font-size:12.5px;">tarball</span>. Installing the tarball from disk with <span style="font-family:'Geist Mono',monospace; font-size:12.5px;">file:</span> is withdrawn: forqsite&rsquo;s pin check rejects it.</span></div>
    ```
 
-   Change nothing else on either page. The same withdrawn command on the unstamped Provider
-   lifecycle route ("The swap") is out of scope (see Out of scope).
+   (b) The Provider lifecycle swap's step 2. Replace
+
+   ```html
+   <span style="font-family:'Geist Mono',monospace; font-size:12.5px;">pnpm add -w file:/path/to/pack.tgz</span> &mdash; the received tarball lands in the workspace. Verify its sha512 against what the author handed over first.</span></div>
+   ```
+
+   with
+
+   ```html
+   <span style="font-family:'Geist Mono',monospace; font-size:12.5px;">pnpm add -w "@forqsite-packs/&lt;name&gt;@&lt;version&gt;"</span> &mdash; the pack is installed by package name from the pack store. Verify its sha512 against what the author handed over first, and confirm the lockfile entry carries both <span style="font-family:'Geist Mono',monospace; font-size:12.5px;">integrity</span> and <span style="font-family:'Geist Mono',monospace; font-size:12.5px;">tarball</span>. A <span style="font-family:'Geist Mono',monospace; font-size:12.5px;">file:</span> install from disk is withdrawn, and forqsite&rsquo;s pin check rejects it.</span></div>
+   ```
+
+   Its closing sentence is worded differently from (a) on purpose, so that C-042's quote
+   stays unique.
+
+   (c) The swap's intro. Replace
+
+   ```html
+   Seven steps. This is the same sequence the platform prints on its own install page, and the same one forqsite states to pack authors in its handover contract &mdash; if the three ever disagree, the platform is right.</p>
+   ```
+
+   with
+
+   ```html
+   Seven steps. This is the sequence forqsite&rsquo;s operator runbook states, and the same one its handover contract states to pack authors; the runbook names the contract as the authoritative recipe. The platform&rsquo;s own install page still prints the withdrawn disk install for step 2, so where it disagrees, follow the runbook.</p>
+   ```
+
+   Change nothing else on either page. No claim is added for (b) or (c); see Context.
 3. **Backlog.** Append the following text to the end of CER-046's finding cell in
    `docs/cer/backlog.md`, inside the cell, just before ` | cold-eyes triage (CP-12)`. It is
    one line, with one leading space. The row stays open.
 
    ```text
- **Stamped-section part done 2026-09-30 — CONTENT-039: every command inside the Upgrade (S-02) and Provider packs (S-03) sections is now checked by a claim. The two `<pre>` blocks are C-039 and C-040, the Rolling back paragraph is C-041, and install steps 2 and 4 are C-042 and C-043. Step 2 was wrong at the pin (the withdrawn `file:` tarball install) and now gives the scoped-package install. The same withdrawn `pnpm add -w file:` install still appears in the unstamped Provider lifecycle swap steps, and it stays open for Phase 15 with every other block outside a stamped section.**
+ **Stamped-section part done 2026-09-30 — CONTENT-039: every command inside the Upgrade (S-02) and Provider packs (S-03) sections is now checked by a claim. The two `<pre>` blocks are C-039 and C-040, the Rolling back paragraph is C-041, and install steps 2 and 4 are C-042 and C-043. Step 2 was wrong at the pin (the withdrawn `file:` tarball install) and now gives the scoped-package install. By operator ruling of 2026-09-30, CONTENT-039 also corrected the same withdrawn install on the unstamped Provider lifecycle route (the swap's step 2 and its intro), with no claim because no stamp covers that route. Bringing that route under a stamp and a claim stays open for Phase 15, with every other block outside a stamped section.**
    ```
 4. **Architecture (ruling 1).** Append this bullet as the last item of
    `docs/architecture.md` § Disagreements and unspecified behaviour, directly after the
@@ -361,17 +425,19 @@ edited, so they are not in `touches:`. `WHEN THE BUILD DID NOT INCLUDE THE PACK`
 `ROLLING BACK` are page headings, not constants. `PROVIDER_MANIFEST_PATH`, `GENERATED` and
 `BLOCKS-025` are literals in the forqsite source, and `CHANGED:` is a note prefix.
 
-Length: well past ~100 lines, because the five claim objects, the exact page substring and
+Length: well past ~100 lines, because the five claim objects, the exact page substrings and
 the Tests script are what the builder transcribes and the reviewer runs.
 
 ## Tests
 
 The project has no test suite. Save this block to a scratch file outside the repo and run it
 from the repo root with `FORQSITE_CLONE=<clone path> bash <file>`. It was run on 2026-09-30:
-- On `main` it printed 14 `FAIL:` lines and exited 1.
+- On `main` it printed 17 `FAIL:` lines, including `index.html: withdrawn file: install still
+  present (2x)`, and exited 1.
 - On a throwaway copy with Instructions 1 to 4 applied, it printed `OK` then `DONE`.
-- Three mutations each made it fail: C-041 set to `added`, C-043 dropped, and one line
-  added to `docs/architecture.md` outside § Disagreements.
+- Four mutations each made it fail: C-041 set to `added`, C-043 dropped, one line added to
+  `docs/architecture.md` outside § Disagreements, and the swap's step 2 left unfixed (which
+  gave `withdrawn file: install still present (1x)`).
 
 ```bash
 set -e
@@ -380,9 +446,10 @@ S=$(mktemp -d); trap 'rm -rf "$S"' EXIT; BASE=$(git merge-base HEAD main)
 for f in docs/claims-manifest.json docs/cer/backlog.md docs/architecture.md index.html; do git show $BASE:$f > $S/base.${f##*/}; done
 for p in index.html gap-handoff.html; do python3 scripts/bundle-template.py verify $p; done
 python3 scripts/bundle-template.py extract index.html $S/index.t.html
+python3 scripts/bundle-template.py extract gap-handoff.html $S/gap-handoff.t.html
 python3 scripts/bundle-template.py extract $S/base.index.html $S/base.index.t.html
 git diff --quiet $BASE -- gap-handoff.html || { echo 'FAIL: gap-handoff.html changed'; exit 1; }
-timeout 60 chromium --headless --disable-gpu --no-sandbox --virtual-time-budget=5000 --dump-dom "file://$PWD/index.html#ops" > $S/dom-ops 2>/dev/null
+for r in ops providers; do timeout 60 chromium --headless --disable-gpu --no-sandbox --virtual-time-budget=5000 --dump-dom "file://$PWD/index.html#$r" > $S/dom-$r 2>/dev/null; done
 python3 - "$S" <<'PY'
 import html, json, os, re, subprocess, sys
 S = sys.argv[1]; clone = os.environ['FORQSITE_CLONE']; bad = []
@@ -452,21 +519,34 @@ for name, text in (('page', pre_after('>Upgrade</h2>')), ('runbook 12.1', fence(
 g = lambda pat, line: subprocess.run(['grep', '-q', '-e', pat], input=line + '\n', text=True).returncode
 pat = re.search(r"grep '([^']*)'", pre_after('>Provider packs (condensed)</h2>'))
 check(pat and g(pat.group(1), '[block-registry] Provider "pack-x" rejected: block type(s) declare a clientComponent.importPath') == 0 and g(pat.group(1), 'Provider pack-x rejected') == 1, 'provider packs grep does not select the [block-registry] line')
-s3 = T[sec['S-03'][0]:sec['S-03'][1]]
-step2 = [html.unescape(x) for x in re.findall(re.escape(MONO) + r'(pnpm add [^<]*)</span>', s3)]
-check(len(step2) == 1 and step2[0].strip() in fence('### 14.2', '### 14.3').splitlines(), f'step 2 install {step2} is not the runbook 14.2 command')
-check('file:/path/to/pack.tgz' not in s3, 'S-03 still gives the file: install')
 cm = re.search(r'grep (check-migration)</span>', T[sec['S-02'][0]:sec['S-02'][1]])
 check(cm and all(cm.group(1) in s for s in ('[WARN] check-migrations:', '[check-migration-hashes]')) and '[WARN] check-migrations:' in show('scripts/check-migrations.ts'), 'check-migration grep')
-# 6. index.html: only install step 2 changed (compared as template content, not diff lines)
-def cut(t, lo, hi):
-    k = t.index('<span style="color:#2f3aff; font-weight:600;">2</span>', lo); e = t.index('</div>', k)
-    check(k < hi, 'step 2 not in S-03'); return t[:k] + t[e:], t[k:e]
-rest, s2 = cut(T, *sec['S-03']); brest, bs2 = cut(BT, *bsec['S-03'])
-check(rest == brest, 'index.html changed outside install step 2')
-check(s2 != bs2 and 'Installing the tarball from disk' in s2, 'install step 2 not rewritten')
-dom = norm(html.unescape(re.sub(r'<[^>]+>', ' ', re.sub(r'(?is)<(script|style)\b.*?</\1>', '', open(f'{S}/dom-ops').read()))))
-check('pnpm add -w "@forqsite-packs/<name>@<version>"' in dom and 'Installing the tarball from disk' in dom, 'new step 2 not rendered on #ops')
+# 6. index.html: only S-03 step 2 and the Provider lifecycle swap's intro and step 2 changed (template content, not diff lines)
+STEP2 = '<span style="color:#2f3aff; font-weight:600;">2</span>'
+def parts(t, s3):
+    k = t.index(STEP2, s3[0]); assert k < s3[1]; a = (k, t.index('</div>', k))
+    h = t.index('>The swap: getting a new pack live</h2>'); p0 = t.index('<p', h); b = (p0, t.index('</p>', p0))
+    k2 = t.index(STEP2, h); c = (k2, t.index('</div>', k2))
+    rest = t[:a[0]] + t[a[1]:b[0]] + t[b[1]:c[0]] + t[c[1]:]
+    return rest, [t[x:y] for x, y in (a, b, c)]
+rest, now = parts(T, sec['S-03']); brest, was = parts(BT, bsec['S-03'])
+check(rest == brest, 'index.html changed outside the three rewritten elements')
+check(all(x != y for x, y in zip(now, was)), 'a rewritten element is unchanged')
+check('Installing the tarball from disk' in now[0] and 'follow the runbook' in now[1] and 'the platform is right' not in now[1], 'rewritten text missing')
+r142 = [l.strip() for l in fence('### 14.2', '### 14.3').splitlines() if l.strip()]
+for k, el in ((0, now[0]), (2, now[2])):
+    c_ = [html.unescape(x) for x in re.findall(re.escape(MONO) + r'(pnpm add [^<]*)</span>', el)]
+    check(len(c_) == 1 and c_[0].strip() in r142, f'rewritten step {c_} is not the runbook 14.2 command')
+check('**That section is the authoritative recipe**' in rb, 'runbook no longer names the contract authoritative')
+# the withdrawn install form appears in neither template (normalised, entities decoded)
+WD = re.compile(r'pnpm add(?: -w| --workspace-root)?(?: --\S+)* ["\']?file:')
+for pg in ('index.html', 'gap-handoff.html'):
+    hits = WD.findall(norm(html.unescape(open(f'{S}/{pg[:-5]}.t.html').read())))
+    check(not hits, f'{pg}: withdrawn file: install still present ({len(hits)}x)')
+flat = lambda f: norm(html.unescape(re.sub(r'<[^>]+>', ' ', re.sub(r'(?is)<(script|style)\b.*?</\1>', '', open(f).read()))))
+for r_ in ('ops', 'providers'):
+    dom = flat(f'{S}/dom-{r_}')
+    check('pnpm add -w "@forqsite-packs/<name>@<version>"' in dom and not WD.search(dom), f'#{r_}: new install not rendered, or withdrawn form rendered')
 # 7. architecture.md: one bullet appended to § Disagreements and unspecified behaviour, nothing else
 def disagree(t):
     lo = t.index('### Disagreements and unspecified behaviour'); hi = t.index('\n---', lo)
@@ -497,15 +577,15 @@ echo DONE
 Pass means the script prints `OK` then `DONE` and exits 0. The reviewer also reads each claim
 against its element and the clone. The check is that none asserts something forqsite does
 not say, such as the unit names or `/opt/forqsite`, and that the new step 2 reads correctly
-in the rendered `#ops` route.
+in the rendered `#ops` and `#providers` routes.
 
 ## Out of scope
 
-- Command text outside S-02 and S-03. That is Phase 15 (CER-046's remainder). It includes
-  the same withdrawn `pnpm add -w file:` install on the unstamped Provider lifecycle route,
-  which the CER-046 note records.
-- forqsite's own install page still printing the withdrawn command. That is an upstream
-  inconsistency, and a GAP entry for it is not this story's.
+- Claims for command text outside S-02 and S-03, including the Provider lifecycle fix in
+  Instructions 2(b) and (c). That is Phase 15 (CER-046's remainder).
+- forqsite's own admin install page still printing the withdrawn command. That is CER-058,
+  for Phase 15.
+- The Backup route's two "`.tgz` … from disk" inventory mentions (see Context).
 - Gap-status mentions outside the manifest (CER-056), and the U+200B comment lines (CER-051).
 - Restamping, and any change to a stamp's text, date or scope. That is INFRA-020.
 - Changing the Values table or § Restamps and closed records. Ruling 1 is recorded only as
