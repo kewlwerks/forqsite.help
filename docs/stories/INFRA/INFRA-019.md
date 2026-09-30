@@ -2,7 +2,7 @@
 id: INFRA-019
 rail: INFRA
 title: Checker hardening and a paste-safe report
-status: planned
+status: complete
 phase: "14"
 story_class: code
 auth_gated: false
