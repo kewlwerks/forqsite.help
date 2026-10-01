@@ -33,13 +33,20 @@
 #     succeed or fail. A far side with no `mktemp` is a remote failure (exit 5). A file
 #     that did not exist before is created mode 0644, so the web server's account can
 #     read it; an existing file keeps its inode and its mode unchanged.
-#   - Writes each backup with noclobber. <name>.bak-<stamp> is refused (exit 5) if that
-#     name already exists in any form, including a dangling symlink; otherwise it is
-#     written under `set -C`, so a name appearing between the check and the write makes
-#     the write fail instead of following it. The far side prints a fixed token only
-#     after that write succeeds, and the success block's `backups` line lists only the
-#     backups whose token came back (CER-037): a file with no live copy to back up (a
-#     first deploy, or a first sidecar) gets no backup and is not listed.
+#   - Writes each backup atomically and with noclobber. <name>.bak-<stamp> is refused
+#     (exit 5) if that name already exists in any form, including a dangling symlink.
+#     Otherwise the live file is copied into a temporary file made by the far side's
+#     `mktemp` in the same directory (./.<name>.backup-XXXXXXXXXX), and only once that
+#     copy has succeeded is it published under the backup name with `ln -- <tmp> <bak>`.
+#     A hard link fails if the name exists in any form, so a name appearing between the
+#     check and the publish makes the publish fail instead of following or replacing it
+#     (a `mv` would replace it). The temporary file is removed on every exit path, so a
+#     failed backup write (an unreadable file, a full disk) leaves neither a backup name
+#     nor a temporary file behind — never a partial backup that looks complete. A backup
+#     keeps mktemp's mode, 0600; backups are never served. The far side prints a fixed
+#     token only after the publish succeeds, and the success block's `backups` line lists
+#     only the backups whose token came back (CER-037): a file with no live copy to back
+#     up (a first deploy, or a first sidecar) gets no backup and is not listed.
 #   - Bounds retention (CER-027). Only after both bundles and the sidecar have verified,
 #     and never on any failure path, it writes a .deploy-verified-<stamp> marker (with
 #     noclobber) and prunes verified backup sets beyond BACKUP_KEEP (a constant, below).
@@ -55,8 +62,11 @@
 #     live just before the deploy that made <stamp>, from that deploy's backup set
 #     (<name>.bak-<stamp>), overwriting each in place through the same verified copy
 #     path a deploy uses, and verifying each by sha256 on the far side. It refuses
-#     (exit 6, nothing written) a set that is missing or incomplete. The operator runs
-#     it by hand; nothing runs it automatically. See "Rollback invariants" below.
+#     (exit 6, nothing written) a set that is missing or incomplete — any of its three
+#     backups absent, empty, or not a regular file. The set of a deploy that found a live
+#     file absent has no backup of that file, so it is incomplete and refused too. The
+#     operator runs it by hand; nothing runs it automatically. See "Rollback invariants"
+#     below.
 #   - Precondition: the remote directory should be writable only by the deploy account.
 #     The mktemp staging and noclobber backups narrow the symlink race another account
 #     could run in that directory; they do not make a shared directory safe.
@@ -97,7 +107,8 @@
 #       outside ^[A-Za-z0-9_][A-Za-z0-9._/~^-]*$ — letters, digits, _ . / ~ ^ -; may
 #       not begin with . / ~ ^ or -) (CER-015, CER-033); --rollback given with no
 #       value, a --rollback stamp outside ^[0-9]{8}T[0-9]{6}Z$, or --rollback together
-#       with --ref or --dry-run
+#       with --ref or --dry-run, or any of --ref, --rollback or --dry-run given more
+#       than once (never "the last value wins")
 #
 # Notes:
 #   - nginx.conf is also bind-mounted into the container, but unlike the two bundles a
@@ -129,14 +140,18 @@
 #     ref is involved), and takes a fresh stamp F of its own.
 #   Order. Three phases, each finished before the next begins:
 #     A. Read only. (1) One ssh call inventories the set: the far-side sha256 of each
-#        of the three backups that is a regular file and not a symlink. Its output is
-#        untrusted: only a line naming one of the three exact backup names with a
-#        64-hex hash is accepted (the first such line per name). (2) If any of the
-#        three is absent, exit 6, naming the absent backups (never the directory). A
-#        set with no sidecar backup is refused too: restoring its bundles under today's
-#        sidecar would publish a provenance claim for a commit no longer served. A
-#        verified marker is not required, since an unmarked set is exactly what a
-#        failed deploy leaves. (3) Each backup's bytes are fetched into a file in the
+#        of the three backups that is a regular file, not a symlink, and non-empty.
+#        Served bundles and the sidecar are never legitimately empty, so an empty
+#        backup can only be the remains of a failed write (pre-atomic backups) and is
+#        never restored. The output is untrusted: only a line naming one of the three
+#        exact backup names with a 64-hex hash is accepted (the first such line per
+#        name). (2) If any of the three does not count, exit 6, naming those backups
+#        (never the directory). A set with no sidecar backup is refused too: restoring
+#        its bundles under today's sidecar would publish a provenance claim for a commit
+#        no longer served. So is the set of a deploy that found a live file absent: it
+#        has no backup of that file, and a rollback restores whole sets and never
+#        deletes a live file. A verified marker is not required, since an unmarked set
+#        is exactly what a failed deploy leaves. (3) Each backup's bytes are fetched into a file in the
 #        local ssh scratch directory (never a shell variable, which would drop trailing
 #        newlines) and hashed locally; any mismatch with the inventory is exit 4.
 #     B. Back up. Each live file is backed up as <name>.bak-F by the deploy's own backup
@@ -155,10 +170,12 @@
 #     failed and the files already restored (each of which verified). Phase A failures
 #     write nothing at all. A phase B or C failure has, by then, written a backup of
 #     every live file that existed as <name>.bak-F, so the pre-rollback state is itself
-#     restorable: `deploy.sh --rollback F` (when all three live files existed).
+#     restorable with `deploy.sh --rollback F` — but only when all three live files
+#     existed. If one was absent, set F has no backup of it, is incomplete, and is
+#     refused (exit 6) like any other incomplete set; restore such a state by hand.
 #   Why it never half-restores a set. Nothing is written until the whole set is known
-#     to be present (phase A2) and every backup's bytes are in hand and verified (A3),
-#     so a missing, symlinked or unreadable backup, or one whose bytes do not match,
+#     to be present and non-empty (phase A2) and every backup's bytes are in hand and
+#     verified (A3), so a missing, empty, symlinked or unreadable backup, or one whose bytes do not match,
 #     stops the run before the first write. The only failures left once writing starts
 #     are transport or far-side write failures during phase C, and for those the run
 #     stops at once, names what is restored and what is not, and leaves the reverse
@@ -193,6 +210,11 @@ REMOTE_DIR_MISSING_EXIT=42
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --ref)
+      if [ "$REF_GIVEN" -eq 1 ]; then
+        echo "deploy.sh: --ref given more than once" >&2
+        echo "$USAGE" >&2
+        exit 64
+      fi
       if [ "$#" -lt 2 ]; then
         echo "deploy.sh: --ref requires an argument" >&2
         echo "$USAGE" >&2
@@ -203,10 +225,20 @@ while [ "$#" -gt 0 ]; do
       shift 2
       ;;
     --dry-run)
+      if [ "$DRY_RUN" -eq 1 ]; then
+        echo "deploy.sh: --dry-run given more than once" >&2
+        echo "$USAGE" >&2
+        exit 64
+      fi
       DRY_RUN=1
       shift
       ;;
     --rollback)
+      if [ "$ROLLBACK_GIVEN" -eq 1 ]; then
+        echo "deploy.sh: --rollback given more than once" >&2
+        echo "$USAGE" >&2
+        exit 64
+      fi
       if [ "$#" -lt 2 ]; then
         echo "deploy.sh: --rollback requires a backup stamp (YYYYMMDDTHHMMSSZ)" >&2
         echo "$USAGE" >&2
@@ -374,10 +406,14 @@ ssh_reason_label() {
 }
 
 # --- Remote command builders ---------------------------------------------------------
-# Backup: refuse if the backup name exists in any form (a dangling symlink included),
-# otherwise write it under noclobber so a name planted between the check and the write
-# makes the write fail rather than follow it. BACKUP_WRITTEN_TOKEN is printed on stdout
-# only after the `cat > <bak>` write has succeeded (CER-037): it is the far side's
+# Backup: refuse if the backup name exists in any form (a dangling symlink included).
+# Otherwise copy the live file into a mktemp temporary file in the same directory and,
+# only once that copy has succeeded, publish it under the backup name with a hard link
+# (`ln` fails if the name exists in any form, so a name planted between the check and the
+# publish makes it fail rather than be followed or replaced). The temporary file is
+# removed on every exit path (on success the backup name keeps the inode), so a failed
+# write leaves no backup name and no temporary file. BACKUP_WRITTEN_TOKEN is printed on
+# stdout only after the publish has succeeded (CER-037): it is the far side's
 # confirmation that the backup exists, and the only evidence backup_live() records.
 BACKUP_WRITTEN_TOKEN="deploy.sh:backup-written"
 remote_backup_cmd() {
@@ -388,8 +424,18 @@ if [ -f $(sq "$name") ]; then
     echo $(sq "deploy.sh: backup name already exists for ${name}") >&2
     exit 5
   fi
-  set -C
-  cat $(sq "$name") > $(sq "$bak") || exit 1
+  if ! command -v mktemp >/dev/null 2>&1; then echo 'deploy.sh: remote has no mktemp' >&2; exit 5; fi
+  tmp=\$(mktemp $(sq "./.${name}.backup-XXXXXXXXXX")) || exit 1
+  trap 'rm -f -- \"\$tmp\"' EXIT
+  trap 'exit 1' HUP INT TERM
+  cat $(sq "$name") > \"\$tmp\" || exit 1
+  if ! ln -- \"\$tmp\" $(sq "$bak"); then
+    if [ -e $(sq "$bak") ] || [ -L $(sq "$bak") ]; then
+      echo $(sq "deploy.sh: backup name already exists for ${name}") >&2
+      exit 5
+    fi
+    exit 1
+  fi
   echo $(sq "$BACKUP_WRITTEN_TOKEN")
 fi"
 }
@@ -518,15 +564,16 @@ if [ "$ROLLBACK_GIVEN" -eq 1 ]; then
   }
 
   # --- Phase A1: inventory, one ssh call -------------------------------------------------
-  # Reports "<sha256>  <name>" for each of the three backups that is a regular file and
-  # not a symlink. A backup that cannot be read fails the call (exit 5), rather than being
-  # reported absent.
+  # Reports "<sha256>  <name>" for each of the three backups that is a regular file, not
+  # a symlink, and non-empty ([ -s ]): an empty backup can only be a failed write's
+  # remains, since served files are never empty, so it counts as missing. A backup that
+  # cannot be read fails the call (exit 5), rather than being reported absent.
   inv_list=""
   for n in "${RB_FILES[@]}"; do inv_list+=" $(sq "${n}.bak-${RB}")"; done
   inventory_cmd="cd $(sq "$DIR") 2>/dev/null || exit ${REMOTE_DIR_MISSING_EXIT}
 if ! command -v sha256sum >/dev/null 2>&1; then echo deploy.sh: remote has no sha256sum >&2; exit 5; fi
 for b in${inv_list}; do
-  if [ -f \"\$b\" ] && ! [ -L \"\$b\" ]; then sha256sum \"\$b\" || exit 1; fi
+  if [ -f \"\$b\" ] && ! [ -L \"\$b\" ] && [ -s \"\$b\" ]; then sha256sum \"\$b\" || exit 1; fi
 done"
   status=0
   inventory_out="$(run_ssh "$inventory_cmd")" || status=$?
@@ -558,9 +605,9 @@ done"
     if [ "${#absent[@]}" -eq "${#RB_FILES[@]}" ]; then
       echo "deploy.sh: rollback refused: there is no backup set for stamp ${RB} (absent: ${absent[*]}); nothing was written" >&2
     else
-      echo "deploy.sh: rollback refused: the backup set for stamp ${RB} is incomplete (absent, or not a regular file: ${absent[*]}); nothing was written" >&2
+      echo "deploy.sh: rollback refused: the backup set for stamp ${RB} is incomplete (absent, empty, or not a regular file: ${absent[*]}); nothing was written" >&2
     fi
-    echo "deploy.sh: a set is restored whole or not at all; a set with no sidecar backup is refused too, since restoring its bundles under today's sidecar would publish a provenance claim for a commit no longer served" >&2
+    echo "deploy.sh: a set is restored whole or not at all; a set with no sidecar backup is refused too, since restoring its bundles under today's sidecar would publish a provenance claim for a commit no longer served, and so is the set of a deploy that found a live file absent" >&2
     exit 6
   fi
 
@@ -570,7 +617,7 @@ done"
     b="${n}.bak-${RB}"
     f="$SSH_SCRATCH_DIR/fetched-${n}"
     fetch_cmd="cd $(sq "$DIR") 2>/dev/null || exit ${REMOTE_DIR_MISSING_EXIT}
-if [ -f $(sq "$b") ] && ! [ -L $(sq "$b") ]; then exec cat $(sq "$b"); fi
+if [ -f $(sq "$b") ] && ! [ -L $(sq "$b") ] && [ -s $(sq "$b") ]; then exec cat $(sq "$b"); fi
 exit 1"
     status=0
     run_ssh "$fetch_cmd" > "$f" || status=$?

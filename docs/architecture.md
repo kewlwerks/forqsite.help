@@ -164,8 +164,12 @@ those tables rather than restating them:
   restores the three files that were live just before the deploy that made `<stamp>` (both
   bundles, then the sidecar) from that deploy's `.bak-<stamp>` set, overwriting each in
   place through the same copy path and re-verifying each by sha256 on the far side, and
-  refuses (exit `6`, nothing written) a set that is missing or incomplete (CER-031,
-  INFRA-018); the operator runs it by hand, never `release.sh`.
+  refuses (exit `6`, nothing written) a set that is missing or incomplete — any backup
+  absent, empty or not a regular file, which includes the set of a deploy that found a
+  live file absent, since that set has no backup of the file (CER-031, INFRA-018); the
+  operator runs it by hand, never `release.sh`. Each backup is written atomically (a
+  same-directory temporary file published with a hard link), so a failed backup write
+  leaves no partial `.bak-<stamp>` behind.
 - `scripts/drift-check.sh` — the served-bytes half of the same invariant. It fetches each
   bundle over HTTP from the configured site and hashes the response bytes, then hashes
   `git show <ref>:<bundle>`, and compares the two sha256 values — never the file sitting in

@@ -7,7 +7,7 @@
 # is exposed rather than silently passing (CER-025). Contacts no real host.
 #
 # Cases (see docs/stories/INFRA/INFRA-006.md § Tests, INFRA-011 for 6-7, INFRA-012 for 8-12,
-# INFRA-013 for 13, INFRA-014 for 14, INFRA-017 for 13f, 15 and 16, INFRA-018 for 17-19):
+# INFRA-013 for 13, INFRA-014 for 14, INFRA-017 for 13f, 15 and 16, INFRA-018 for 17-22):
 #   1. missing config   — exit 2, message names both variable names, stub-ssh not invoked
 #   2. dirty tree       — exit 3, message names the dirty bundle, target files untouched
 #   3. happy path       — exit 0, target files match committed bytes, two .bak-<stamp>
@@ -91,6 +91,16 @@
 #      with a non-empty directory at its gap-handoff backup: exit 5, never "no backups were
 #      pruned"; removed: names its index backup and not its gap-handoff backup; remains:
 #      names its gap-handoff backup; its index backup gone, its marker still present
+#  20. atomic backup (INFRA-018/ATOMIC) — the live index.html made unreadable (mode 000):
+#      exit 5, and no entry containing "index.html.ba" is left (no backup name, no
+#      temporary file); reported FAIL with a precondition message if the file is still
+#      readable (e.g. as root), so it cannot pass vacuously
+#  21. empty backup (INFRA-018/EMPTY) — a complete set whose index.html backup is emptied:
+#      the 18(b)-(d) refusal contract (exit 6, unchanged snapshot, names the backup, not the
+#      directory)
+#  22. repeated option (INFRA-018/REPEAT) — `--ref HEAD --ref HEAD`, `--dry-run --dry-run`
+#      and `--rollback <S> --rollback <S>`, each in a fresh target: exit 64, no ssh, the
+#      output says "more than once"
 #
 # Determinism: deploy.sh refuses a deploy whose one-second backup stamp already exists in
 # its target (INFRA-012). So every deploy run that can reach the backup step starts from a
@@ -1525,6 +1535,81 @@ elif [ ! -e "$PRUNE19/.deploy-verified-$p19_old" ]; then
 fi
 report "prune failure reported per file (exit 5, removed: and remains: lines name the failed set's files) INFRA-018/CER-030" "$ok" "$detail"
 rm -rf "$PRUNE19"
+
+export FORQSITE_HELP_DEPLOY_HOST="fixture-host-alias"
+export FORQSITE_HELP_DEPLOY_DIR="$FIXTURE_TARGET"
+
+# =====================================================================================
+# Case 20 (INFRA-018/ATOMIC): a backup write that fails leaves no backup name and no
+# temporary file. The live index.html is made unreadable, so the far side's read fails
+# after the write target has been opened.
+# =====================================================================================
+ATOM20="$WORK_DIR/case20-atomic-backup-target"
+fresh_target "$ATOM20"
+chmod 000 "$ATOM20/index.html"
+if cat "$ATOM20/index.html" >/dev/null 2>&1; then
+  chmod 644 "$ATOM20/index.html"
+  report "a failed backup write leaves no backup name and no temporary file (exit 5) INFRA-018/ATOMIC" 1 \
+    "precondition failed: a mode-000 file is still readable here (running as root?), so the case would pass vacuously"
+else
+  export FORQSITE_HELP_DEPLOY_DIR="$ATOM20"
+  set +e
+  out_20="$(run_deploy 2>&1)"
+  status_20=$?
+  set -e
+  chmod 644 "$ATOM20/index.html"
+  left_20="$(cd "$ATOM20" && ls -A | grep -F 'index.html.ba' || true)"
+  ok=0
+  detail=""
+  if [ "$status_20" -ne 5 ]; then
+    ok=1; detail="expected exit 5, got $status_20: $out_20"
+  elif [ -n "$left_20" ]; then
+    ok=1; detail="a failed backup write left an entry behind: $left_20"
+  elif printf '%s' "$out_20" | grep -F -- "$ATOM20" >/dev/null; then
+    ok=1; detail="the failure names the target directory"
+  fi
+  report "a failed backup write leaves no backup name and no temporary file (exit 5) INFRA-018/ATOMIC" "$ok" "$detail"
+fi
+rm -rf "$ATOM20"
+
+# =====================================================================================
+# Case 21 (INFRA-018/EMPTY): an empty backup counts as missing, so its set is refused
+# under the 18(b)-(d) refusal contract.
+# =====================================================================================
+EMPTY21="$WORK_DIR/case21-empty-backup-target"
+rb_fresh_target "$EMPTY21"
+: > "$EMPTY21/index.html.bak-$RB_STAMP"
+check_rb_refusal "rollback to a set with an empty index.html backup (exit 6, nothing written, names that backup) INFRA-018/EMPTY" "$EMPTY21" "index.html.bak-$RB_STAMP"
+rm -rf "$EMPTY21"
+
+# =====================================================================================
+# Case 22 (INFRA-018/REPEAT): an option given more than once is a usage error (exit 64,
+# no ssh); the last value never wins. Each run gets a fresh target.
+# =====================================================================================
+REP22="$WORK_DIR/case22-repeat-target"
+check_repeat() {
+  local name="$1"; shift
+  local out status ok=0 detail=""
+  rb_fresh_target "$REP22"
+  export FORQSITE_HELP_DEPLOY_DIR="$REP22"
+  rm -f "$SSH_MARKER"
+  set +e
+  out="$(run_deploy "$@" 2>&1)"
+  status=$?
+  set -e
+  if [ "$status" -ne 64 ]; then
+    ok=1; detail="expected exit 64, got $status: $out"
+  elif [ -f "$SSH_MARKER" ]; then
+    ok=1; detail="stub-ssh marker present — ssh was invoked"
+  elif ! printf '%s' "$out" | grep -q 'more than once'; then
+    ok=1; detail="the refusal does not say the option was given more than once: $out"
+  fi
+  report "$name" "$ok" "$detail"
+  rm -rf "$REP22"
+}
+check_repeat "repeated --ref (exit 64, no ssh, says more than once) INFRA-018/REPEAT" --ref HEAD --ref HEAD
+check_repeat "repeated --dry-run (exit 64, no ssh, says more than once) INFRA-018/REPEAT" --dry-run --dry-run
+check_repeat "repeated --rollback (exit 64, no ssh, says more than once) INFRA-018/REPEAT" --rollback "$RB_STAMP" --rollback "$RB_STAMP"
 
 export FORQSITE_HELP_DEPLOY_HOST="fixture-host-alias"
 export FORQSITE_HELP_DEPLOY_DIR="$FIXTURE_TARGET"

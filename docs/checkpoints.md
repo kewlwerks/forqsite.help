@@ -6,7 +6,7 @@ Before `checkpoint-tag`, run `scripts/drift-check.sh` by hand and record its exi
 
 **Rollback.** To put back the files that were live before a deploy, find that deploy's stamp (the `stamp` line of its success block, or the `.bak-<stamp>` suffix of its backups), then, by hand:
 
-1. Run `scripts/deploy.sh --rollback <stamp>`. It restores all three files from that stamp's backup set in place and sha256-verifies each, or refuses a missing or incomplete set (exit 6) without writing anything. Its own success block names a fresh stamp under which the files it replaced were backed up, so the rollback can itself be undone the same way.
+1. Run `scripts/deploy.sh --rollback <stamp>`. It restores all three files from that stamp's backup set in place and sha256-verifies each, or refuses a missing or incomplete set (exit 6) without writing anything. A set is incomplete when any of its three backups is absent, empty or not a regular file — including the set of a deploy that found a live file absent (a first deploy, or the first with a sidecar), which has no backup of that file; restore such a state by hand, with in-place overwrites. Its own success block names a fresh stamp under which the files it replaced were backed up, so the rollback can itself be undone the same way when all three live files existed.
 2. Run `scripts/drift-check.sh` to confirm the bytes a request returns.
 
 Never `mv` a backup over a live file: the bind mount follows the inode, so the container would keep serving the old one. Nothing rolls back automatically; `release.sh` never does.
