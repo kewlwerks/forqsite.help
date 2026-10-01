@@ -239,7 +239,15 @@ below prints `docs ok` and `ALL-OK`.
      subjects can name a deployment.
 
 5. **Stops before the commit.**
-   - **After 11.** Restamp writes nothing on failure, so there is nothing to undo.
+   - **After 11.** (Amended 2026-10-01: the merged `restamp.py` contradicted the stand-in this
+     spec was written against.) The merged `restamp.py` can exit 5 after a partial write: its
+     write-phase failure leaves tracked changes and names `git checkout -- .` as the recovery. On
+     any exit 11, `release.sh` checks whether any tracked file changed.
+     - If any did, it prints `git restore --staged --worktree -- .`.
+     - If none did, it says nothing was written.
+
+     It prints the same restore line if a successful restamp changed anything other than the
+     manifest and the two bundles.
    - **After 12 or 13.** Print `nothing was committed`, then
      `git restore --staged --worktree -- docs/claims-manifest.json index.html gap-handoff.html`.
 
