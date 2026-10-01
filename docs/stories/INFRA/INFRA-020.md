@@ -21,6 +21,19 @@ narrative_roles: []
 
 ## Context
 
+**Operator rulings (2026-10-01)**
+- **Defaults accepted.** All five design defaults are accepted as written:
+  - `unverified` claims keep their result;
+  - "clean tree" means tracked files only;
+  - the `--dry-run` and `--date` options are added;
+  - `rel-` tags are annotated, which is INFRA-021's job;
+  - `release.committed` is the committer date.
+- **The bootstrap tag.** After INFRA-020 merges, the orchestrator creates the annotated
+  `rel-1fda3228` tag on cp-13's commit, locally, and shows it to the operator. It is pushed only
+  after the operator approves. The builder never creates it.
+- **Notes naming "the release commit".** Unprefixed notes that say "the release commit" are
+  rewritten by CONTENT-040 to name the sha. `restamp.py` never rewrites prose.
+
 `scripts/restamp.py <target>`, python3 stdlib only, following the precedent of
 `bundle-template.py` and `stale-claims.py`. Clone from `FORQSITE_CLONE`.
 

@@ -45,6 +45,10 @@ manifest are CER-056 (Phase 15).
 
 Phase 14 plan: approved by the operator on 2026-09-30, synthesized from two independent planner drafts (docs/phases/phase-14.md).
 
+Also (operator ruling 2026-10-01): the unprefixed notes on C-039, C-040, C-041 and C-043 say
+"Verified at the release commit on 2026-09-30". Rewrite them to name `1fda3228` explicitly, so
+they stay true after any restamp. Sweep every other claim note for the same phrasing.
+
 ## Ensures
 
 <!-- spec-writer elaborates -->

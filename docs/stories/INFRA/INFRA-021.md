@@ -54,6 +54,9 @@ deleted and a `Dockerfile` added. Name the host and schedule only by class.
 
 Phase 14 plan: approved by the operator on 2026-09-30, synthesized from two independent planner drafts (docs/phases/phase-14.md).
 
+Also (operator ruling 2026-10-01): `rel-<sha>` tags are annotated, so the "newest release tag"
+lookup in `restamp.py` (INFRA-020) sorts reliably.
+
 ## Ensures
 
 <!-- spec-writer elaborates -->
