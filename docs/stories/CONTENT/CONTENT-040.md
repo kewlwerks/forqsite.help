@@ -31,7 +31,20 @@ helper treats an empty or whitespace-only value as missing, and
 for "a tests/ or CI shellcheck step". The tests/ half is met, and the closed record says so
 through its two `tests/repo/firstrun-required-vars.test.ts` evidence literals.
 
-**Operator ruling 2026-10-01.** The unprefixed notes on C-039, C-040, C-041 and C-043 say
+**Operator rulings 2026-10-01 on this spec's open questions.**
+- **Architecture wording: approved** as specced (Instruction 5). That covers three changes:
+  - the closing-commit row lets a review story merge a closed record while the pin predates
+    the fix, with the release as its post-merge step;
+  - the eight `closed` schema rows flip to `in use`;
+  - the intro's "never contained" list drops `closed`.
+- **The release target is always the explicit `release.sh cp-PM105-main`,** never
+  `--latest-checkpoint`, so the release matches the counts predicted here.
+- **The note sweep is limited to notes that survive the release:** C-022, C-039, C-040,
+  C-041, C-042 and C-043. The prefixed `CHANGED:`/`ADDED:` notes on C-002, C-037 and C-038
+  are left untouched, because restamp deletes them.
+- **No `absent` check on the closed record.** Evidence alone decides reopening.
+
+**Operator ruling 2026-10-01 (stub).** The unprefixed notes on C-039, C-040, C-041 and C-043 say
 "Verified at the release commit on 2026-09-30". Rewrite them to name `1fda3228` explicitly, so
 they stay true after any restamp, and sweep every other claim note for the same phrasing.
 
@@ -72,8 +85,8 @@ clone, and a throwaway copy with every edit below applied.
     CONTENT-031's rule, though not a schema row, and the window closes when the release lands.
   - `stale-claims.py` never reads `closed_by`. `restamp.py` leaves `closed_by` and `closed[]`
     alone, and requires only checker exit 0 at the target. Neither refuses this state.
-  - The story records the ruling in architecture.md (Instruction 5). This is why
-    `docs/architecture.md` was added to `touches:`.
+  - The story records the ruling in architecture.md (Instruction 5, approved 2026-10-01).
+    This is why `docs/architecture.md` was added to `touches:`.
 - **The schema's `closed` rows say `unexercised`, and "No manifest has used it yet."** Both
   go false at merge, because status is measured against git history. Instruction 5 fixes
   them.
@@ -92,7 +105,7 @@ clone, and a throwaway copy with every edit below applied.
 The Tests block below prints `OK` and `ALL-OK`, with no `SKIP` once INFRA-020 has merged.
 - **Manifest.** C-026 is moved to `closed[]` exactly as Instruction 1 gives it, with evidence
   found at `cp-PM105-main` and absent at `1fda3228`. The pin, stamps and quotes are
-  unchanged. C-001's evidence is the S-07 union. Exactly the nine swept notes changed, and
+  unchanged. C-001's evidence is the S-07 union. Exactly the six swept notes changed, and
   each now names `1fda3228`.
 - **Checker.** It exits 0 at `cp-PM105-main` with the summary above.
 - **Templates.** Neither holds any GAP-006 text, and the index ledger matches the
@@ -146,23 +159,14 @@ as `json.dumps(m, indent=2, ensure_ascii=False) + '\n'`. Change nothing not list
        `unchanged in count between forqsite commits 17b78645 and 1fda3228,`.
        `17b78645` is S-05's commit in CONTENT-030's manifest. The runbook has 5 `docker`
        lines at both commits.
-   - **C-002.** Replace `at the release commit that directory holds` with
-     `at forqsite commit 1fda3228 that directory holds`.
-   - **C-037 and C-038.**
-     - Replace `ADDED: verified at the release commit on 2026-09-25` with
-       `ADDED: verified at forqsite commit 1fda3228 on 2026-09-25`.
-     - Replace the footer clause. In C-037 it is
-       `the footer stamp's printed date, 24 september 2026, is the earlier verification of the entries it already covered.`
-       and in C-038 it begins with a capital `The`. Replace it with
-       `the footer stamp then printed 24 september 2026, the date the entries it already covered were verified.`,
-       keeping the same capitalisation.
 
    **Why "printed date" goes too.** Once restamped, a stamp prints the release date, so "the
    stamp's printed date, 2026-09-24" would become false.
 
-   **Why prefixed notes are swept.** The release will delete the prefixed notes of C-002,
-   C-037 and C-038 anyway, because their quotes are unchanged since cp-13 (INFRA-020
-   Instruction 4). They are swept regardless, so no note anywhere says "the release commit".
+   **Why C-002, C-037 and C-038 are left alone (operator ruling 2026-10-01).** Their prefixed
+   notes still say "the release commit", but the release deletes them, because their quotes
+   are unchanged since cp-13 (INFRA-020 Instruction 4). C-042's `CHANGED:` note is swept,
+   because its quote changed after cp-13, so its note survives.
 
 3. **`index.html` template**, three edits.
    - **Setup route** (the note after the firstrun re-run).
@@ -215,7 +219,7 @@ which is this block's own output word. All three are intentional.
 ## Tests
 
 Run from the repo root with `FORQSITE_CLONE=<clone path> bash <this block>`. On main
-`a3881a7` it printed `49 failed` and exited 1. On a throwaway copy with the edits above, it
+`a3881a7` it printed `49 failed`; after the 2026-10-01 rulings, re-run on main `9de66e5`, it printed `40 failed`. Both exited 1. On a throwaway copy with the edits above, it
 printed `OK`, then the `SKIP` (no `restamp.py` yet), then `ALL-OK`. Step 7 checks
 restamp's result through its exact summary line. It is not a whole-line `git diff` scan.
 
@@ -231,6 +235,7 @@ for p in index.html gap-handoff.html; do
   python3 -c "import re,sys; [open(f'{sys.argv[2]}.{i}.js','w').write(s) for i,s in enumerate(re.findall(r'<script type=.text/x-dc.[^>]*>(.*?)</script>', open(sys.argv[1]).read(), re.S))]" "$S/$p" "$S/js-$p"
   for f in "$S/js-$p".*.js; do node --check "$f"; done
   git show "$BASE:$p" > "$S/base-$p"; python3 scripts/bundle-template.py extract "$S/base-$p" "$S/base.$p" > /dev/null
+  git show "cp-13:$p" > "$S/cp13-$p"; python3 scripts/bundle-template.py extract "$S/cp13-$p" "$S/cp13.$p" > /dev/null
 done
 git show "$BASE:docs/claims-manifest.json" > "$S/base-manifest.json"
 set +e
@@ -282,7 +287,7 @@ need(len(got) == len(set(got)) and set(got) == u, 'Known-gaps evidence is not th
 need(got == [key(e) for e in bkg['evidence'] if key(e) in u], 'Known-gaps evidence reordered')
 need(not any(p == 'scripts/firstrun.sh' and ('|| true | cut' in s or '7.5' in s) for p, s in got), 'GAP-006 evidence left in the union')
 # 4. notes: only the swept notes change, and every one names the old pin
-SWEPT = {'C-002', 'C-022', 'C-037', 'C-038', 'C-039', 'C-040', 'C-041', 'C-042', 'C-043'}
+SWEPT = {'C-022', 'C-039', 'C-040', 'C-041', 'C-042', 'C-043'}   # notes that survive the release
 bc = {c['id']: c for c in b['claims']}
 for c in m['claims']:
     o = bc[c['id']]
@@ -290,8 +295,11 @@ for c in m['claims']:
     need(rest(c) == rest(o), f"{c['id']}: changed outside note")
     n = c.get('note', '')
     need((n != o.get('note', '')) == (c['id'] in SWEPT), f"{c['id']}: note changed = {n != o.get('note', '')}")
-    need(not re.search(r"the release commit|printed date|previous stamp's commit|\bC-\d+", n), f"{c['id']}: note still says 'the release commit', a printed date, or a claim id")
-    if c['id'] in SWEPT: need('1fda3228' in n and not re.search(r'/mnt/|/home/|~/|https?://', n), f"{c['id']}: note does not name 1fda3228")
+    need(not re.search(r"\bC-\d+", n), f"{c['id']}: note names a claim id")
+    if c['id'] in SWEPT:
+        need(not re.search(r"the release commit|printed date|previous stamp's commit", n), f"{c['id']}: note still says 'the release commit' or a printed date")
+        need('1fda3228' in n and not re.search(r'/mnt/|/home/|~/|https?://', n), f"{c['id']}: note does not name 1fda3228")
+    elif re.match(r'(CHANGED|ADDED|UNVERIFIED):', n): need(c['quote'] in open(f'{S}/cp13.{c["page"]}').read(), f"{c['id']}: unswept prefixed note would survive the release")
 # 5. pages: GAP-006 gone from both templates, lists consistent
 W = r"GAP-006|gap-006|shell-precedence|present-but-empty|pipes cut from true|\b006\b"
 for p, t in T.items(): need(not re.search(W, t), f'{p}: GAP-006 text remains: {re.findall(W, t)[:3]}')
@@ -356,16 +364,14 @@ merge and the release: main's pages drop GAP-006 while their stamps still name `
 2. **Re-run this story's Tests block on main.** Expect `ALL-OK` with no `SKIP`. The restamp
    line must read
    `restamp: nullvalues/forqsite 1fda3228 -> 94f5c339 on <date>: 42 claims: 40 open, 1 changed, 0 added, 0 unverified (dry run; nothing written)`.
-3. **Dry run:** `scripts/release.sh --latest-checkpoint`. Expect exit 0 with these lines:
+3. **Dry run:** `scripts/release.sh cp-PM105-main`. Use the explicit target, never
+   `--latest-checkpoint` (operator ruling 2026-10-01). Expect exit 0 with these lines:
    - `release: target cp-PM105-main (94f5c339)`;
    - restamp's dry-run line as above;
    - `release: would commit: release: nullvalues/forqsite@94f5c339, 42 claims: 23 untouched, 19 holds, 0 unverified`.
 
-   Show the operator any `ahead of origin` listing. **If the target is a newer checkpoint
-   than `cp-PM105-main`, stop and ask.** This story was verified only at `cp-PM105-main`.
-   `scripts/release.sh cp-PM105-main` is the fallback, used only on the operator's word.
-4. **Release, on the operator's go:** `scripts/release.sh --yes --latest-checkpoint`, or the
-   explicit target agreed in step 3. Expect exit 0, the commit, the annotated `rel-94f5c339`
+   Show the operator any `ahead of origin` listing. If any line differs, stop and ask.
+4. **Release, on the operator's go:** `scripts/release.sh --yes cp-PM105-main`. Expect exit 0, the commit, the annotated `rel-94f5c339`
    tag, then the deploy, the drift check and the push.
 5. **After.**
    - The manifest's `release.commit` is `94f5c339c085869c390d92f567461185b03f1bea`, and
@@ -383,10 +389,13 @@ merge and the release: main's pages drop GAP-006 while their stamps still name `
   Phase 15).
 - Restamping, deploying, tagging or pushing inside the story. That is the post-merge
   release, and the builder never runs `release.sh --yes` or creates any tag.
-- An `absent` check on the old step 7.5 line in the closed record. The schema has no
-  `closed[].absent` row, and evidence alone decides reopening.
+- An `absent` check on the old step 7.5 line in the closed record (operator ruling
+  2026-10-01). The schema has no `closed[].absent` row, and evidence alone decides
+  reopening.
+- `--latest-checkpoint` for this release (operator ruling 2026-10-01).
 - A `note` field on `closed[]`. The tests/ half of the acceptance test is recorded through
   the test-file evidence.
 - Other stale gap counts outside the touched files (e.g. the `GAP-002…011` remark in
   `docs/ideology.md`), and `docs/checkpoints.md`'s dated records.
-- Rewording any note beyond the listed replacements, and command-block coverage (Phase 15).
+- Rewording any note beyond the listed replacements, including the prefixed notes on C-002,
+  C-037 and C-038, and command-block coverage (Phase 15).
