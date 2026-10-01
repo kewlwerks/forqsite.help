@@ -64,7 +64,9 @@ forqsite.help/
 ├── scripts/
 │   ├── bundle-template.py  # canonical bundle-edit tool (extract|inject|verify) — see Editing procedure below
 │   ├── stale-claims.py     # release-time stale-claim checker (reports, never edits) — see Stale-claim checker below
-│   └── stale-claims-selftest.sh  # fixture selftest for stale-claims.py
+│   ├── stale-claims-selftest.sh  # fixture selftest for stale-claims.py
+│   ├── restamp.py          # pins a new release commit in the manifest and both bundles — see Restamp below
+│   └── restamp-selftest.sh # fixture selftest for restamp.py
 ├── docs/
 │   └── claims-manifest.json  # every stamped claim both pages make about forqsite, and where its evidence lives
 └── README.md
@@ -140,6 +142,34 @@ quoted in a tracked file; the full report is never committed. Its usage, verdict
 codes live in its own header docstring, per the exit-code contract below;
 `scripts/stale-claims-selftest.sh` exercises each verdict and every exit code against a
 fixture repository.
+
+**Restamp** (INFRA-020, Phase 14). `scripts/restamp.py <target>` moves the pin: once no
+claim is stale at a newer forqsite commit, it sets the manifest's `release` object to that
+commit, rewrites every stamp's commit and date on both pages, and derives every claim's
+`result` again per § Restamps and closed records. It reads the forqsite clone named by
+`FORQSITE_CLONE`, as the checker does. It refuses, writing nothing, when this repository
+has tracked changes; when the target is not in the clone, is the release commit, or does
+not descend from it; when either bundle fails `bundle-template.py verify` before any edit;
+when there is no usable previous-release tag; when `stale-claims.py --no-commits` reports a
+stale claim or a reopened gap at the target (there is no `--allow-stale`: a stale claim is
+fixed by a reviewed story first); when the manifest is inconsistent (a stamp record, a
+result that the previous pages do not support, or a Known-gaps claim whose evidence is not
+the union of its footer stamp's claims); and when any stamp text does not occur on its page
+exactly as often as the manifest records it. It writes only the manifest and the two
+bundles, the bundles through `bundle-template.py` after staging and verifying them outside
+the repository, and the manifest last. It never commits, tags, pushes or deploys, and it
+rewrites no prose. The previous release, whose pages each quote is compared against, is
+the newest `rel-<forqsite short sha>` tag in this repository by creation time, never by
+name, and it must be the tag of the current `release.commit`. These tags are annotated.
+The first, `rel-1fda3228`, is bootstrapped by hand on main after INFRA-020 merges, at
+cp-13's commit, whose pages are byte-identical to the deployed cp-12 pages that pin
+1fda3228; the exact command is in the script's header, and it is pushed only once the
+operator approves it. Later `rel-` tags are INFRA-021's job. A mechanical restamp means, as
+ruled by the operator on 2026-09-30, that every recorded evidence check passed at this
+commit. That is weaker than Phase 12's hand verification, and the meaning is revisited
+after two releases. Its usage, refusals and exit codes live in its own header docstring,
+per the exit-code contract below; `scripts/restamp-selftest.sh` exercises each refusal and
+a clean restamp against fixture repositories.
 
 **Deploy, drift-check and provenance scripts** (INFRA-006, INFRA-007, INFRA-008, Phase 11).
 Three scripts, each documented in full in its own header comment — this section points at
@@ -242,10 +272,10 @@ committed version.
 
 | Field | Type | Status | Source | Meaning |
 | --- | --- | --- | --- | --- |
-| `release` | object | in use | CONTENT-030 | The one release commit every claim is verified against. `phase-12.md` § Release commit mirrors it, and the manifest is the authoritative copy. |
+| `release` | object | in use | CONTENT-030, INFRA-020 | The one release commit every claim is verified against. This object is the only copy, and `restamp.py` writes it. |
 | `release.repo` | string | in use | CONTENT-030 | The slug of the repository the claims are about. |
-| `release.commit` | string | in use | CONTENT-030 | The full 40-hex sha, taken as the tip of forqsite's `origin/main` when the release was pinned. |
-| `release.committed` | string | in use | CONTENT-030 | The date of that commit. |
+| `release.commit` | string | in use | CONTENT-030, INFRA-020 | The full 40-hex sha. CONTENT-030 took it as the tip of forqsite's `origin/main` when the release was pinned; since INFRA-020 it is the target given to `restamp.py`. |
+| `release.committed` | string | in use | CONTENT-030, INFRA-020 | The target's committer date, `YYYY-MM-DD`. |
 | `release.pinned` | string | in use | CONTENT-030 | The date the release was pinned. |
 | `stamps` | array | in use | CONTENT-030 | One record per stamp occurrence in the template. Every stamp is cited by at least one claim. |
 | `stamps[].id` | string | in use | CONTENT-030 | The stamp id, `S-NN`. |
@@ -318,6 +348,13 @@ Both rules were ruled by the operator on 2026-09-29 in INFRA-016's spec.
   claim is restamped at every release. A sticky `result`, a per-release history, and
   updating `result` only when a quote changes were rejected. The stale-claim checker does
   not read `result`, except to surface `unverified`.
+- **Which pages a restamp compares against** (INFRA-020). "The pages as they stood at the
+  previous release" are the pages at the newest `rel-<forqsite short sha>` tag in this
+  repository, which must name the current `release.commit`. `restamp.py` keeps an
+  `unverified` claim as it is, result, note and marker, because a mechanical restamp cannot
+  verify it; a quote found in that tag's page becomes `open`, dropping a `CHANGED:`,
+  `ADDED:` or `UNVERIFIED:` note and keeping an unprefixed one; any other quote must
+  already be `changed` or `added`, with its matching note, from the story that changed it.
 - **How a `closed[]` record is checked for reopening.** A closed record's `evidence` is the
   literals at the release commit that show the fix (CONTENT-031). The checker re-checks
   them at the target by the same rules as a live claim's evidence (and `absent`/`counts`,

@@ -63,6 +63,15 @@ a renamed path's new name, so the report holds only text from the manifest and c
 quoted in a tracked file. Never commit the full report: forqsite commit subjects can
 name a deployment.
 
+Once nothing is stale, `scripts/restamp.py` pins the new commit: it rewrites the
+manifest's `release` object, every stamp on both pages and every claim's result, and
+nothing else, and it refuses without writing anything while the checker reports a stale
+claim or any other check fails. It never commits, tags or deploys.
+
+```sh
+FORQSITE_CLONE=<path to your forqsite clone> python3 scripts/restamp.py [--dry-run] [--date YYYY-MM-DD] <commit-ish>
+```
+
 ### Editing the bundles
 
 `index.html` and `gap-handoff.html` are **self-extracting bundles**, not hand-written

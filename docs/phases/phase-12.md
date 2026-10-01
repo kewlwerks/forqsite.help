@@ -57,8 +57,9 @@ list of what each claim asserts and where in forqsite the evidence lives.
 This phase verifies against one forqsite commit:
 `nullvalues/forqsite@1fda3228322d5ad779f44c321c4013ccd247b3fa`, committed 2026-09-24 and
 pinned 2026-09-24 (the tip of `main` in the forqsite repository when CONTENT-030 was built).
-The authoritative copy is the `release` object in `docs/claims-manifest.json`. If the two
-ever disagree, the manifest wins.
+That is a dated record of this phase, not the current release commit. Since INFRA-020 the
+current release commit lives only in the `release` object of `docs/claims-manifest.json`,
+which `scripts/restamp.py` writes.
 
 ## Stories
 
