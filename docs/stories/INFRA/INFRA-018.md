@@ -39,6 +39,18 @@ mode by hand.
 
 Phase 14 plan: approved by the operator on 2026-09-30, synthesized from two independent planner drafts (docs/phases/phase-14.md).
 
+**Operator rulings (2026-10-01)**
+
+The operator confirmed all four design choices:
+1. A backup set with no sidecar backup is refused with exit 6, never restored bundles-only.
+2. `docs/checkpoints.md` gains the short rollback procedure.
+3. Backup sets that a rollback creates are never pruned automatically; the operator removes
+   them by hand.
+4. `--rollback --dry-run` is refused with exit 64.
+
+The operator also directed that, after the build and before review, a separate proving agent
+tries to break the rollback.
+
 ## Requires
 
 INFRA-017 is complete and merged. This story builds on its `deploy.sh`: usage exits 64, `REF_RE`,
