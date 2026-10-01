@@ -154,13 +154,18 @@ those tables rather than restating them:
   the provenance sidecar (below) and deploys it the same way. Retention is bounded: once
   every file of a deploy has verified, that deploy's backup set is marked verified and
   verified sets beyond a stated count (a constant in the script's header) are pruned, while
-  the set just made and any set without a verified marker — such as a failed deploy's
-  rollback copy — are always kept. The script assumes the remote directory is writable only
+  the set just made and any set without a verified marker — such as the backup set a
+  failed deploy leaves, or one a rollback makes — are always kept. The script assumes the remote directory is writable only
   by the deploy account: its unpredictable staging names and noclobber backups narrow a
   co-tenant's symlink race there, but do not make a shared directory safe. On any ssh or
   remote-command failure it prints a fixed reason class (e.g. "the connection was
   refused"), never ssh's own diagnostic text or the remote shell's, because that text
-  names the configured target (CER-028, INFRA-014).
+  names the configured target (CER-028, INFRA-014). `deploy.sh --rollback <stamp>`
+  restores the three files that were live just before the deploy that made `<stamp>` (both
+  bundles, then the sidecar) from that deploy's `.bak-<stamp>` set, overwriting each in
+  place through the same copy path and re-verifying each by sha256 on the far side, and
+  refuses (exit `6`, nothing written) a set that is missing or incomplete (CER-031,
+  INFRA-018); the operator runs it by hand, never `release.sh`.
 - `scripts/drift-check.sh` — the served-bytes half of the same invariant. It fetches each
   bundle over HTTP from the configured site and hashes the response bytes, then hashes
   `git show <ref>:<bundle>`, and compares the two sha256 values — never the file sitting in

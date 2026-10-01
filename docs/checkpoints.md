@@ -4,6 +4,13 @@ Each checkpoint is tagged after all stories in the phase pass the full checkpoin
 (build gate → security audit → intent review).
 Before `checkpoint-tag`, run `scripts/drift-check.sh` by hand and record its exit code and result block in that phase's own checkpoint section below (see `docs/architecture.md` § Deployment for why this step is manual); a drift exit blocks the tag until a deploy corrects it and the check is re-run.
 
+**Rollback.** To put back the files that were live before a deploy, find that deploy's stamp (the `stamp` line of its success block, or the `.bak-<stamp>` suffix of its backups), then, by hand:
+
+1. Run `scripts/deploy.sh --rollback <stamp>`. It restores all three files from that stamp's backup set in place and sha256-verifies each, or refuses a missing or incomplete set (exit 6) without writing anything. Its own success block names a fresh stamp under which the files it replaced were backed up, so the rollback can itself be undone the same way.
+2. Run `scripts/drift-check.sh` to confirm the bytes a request returns.
+
+Never `mv` a backup over a live file: the bind mount follows the inode, so the container would keep serving the old one. Nothing rolls back automatically; `release.sh` never does.
+
 ---
 
 ## cp1-bootstrap-complete

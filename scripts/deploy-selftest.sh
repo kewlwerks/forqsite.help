@@ -7,7 +7,7 @@
 # is exposed rather than silently passing (CER-025). Contacts no real host.
 #
 # Cases (see docs/stories/INFRA/INFRA-006.md § Tests, INFRA-011 for 6-7, INFRA-012 for 8-12,
-# INFRA-013 for 13, INFRA-014 for 14, INFRA-017 for 13f, 15 and 16):
+# INFRA-013 for 13, INFRA-014 for 14, INFRA-017 for 13f, 15 and 16, INFRA-018 for 17-19):
 #   1. missing config   — exit 2, message names both variable names, stub-ssh not invoked
 #   2. dirty tree       — exit 3, message names the dirty bundle, target files untouched
 #   3. happy path       — exit 0, target files match committed bytes, two .bak-<stamp>
@@ -73,6 +73,24 @@
 #  16. --ref class (INFRA-017/CER-033) — a real fixture branch named q"b: `--ref 'q"b'`
 #      exits 64, ssh never invoked, the value absent from the output; a branch
 #      rel/a-1.b_2: `--dry-run --ref rel/a-1.b_2` exits 0
+#  17. truthful backups line (INFRA-018/CER-037) — a deploy into an empty directory: exit 0,
+#      no *.bak-* file, the backups line names no .bak-; a deploy over both bundles and no
+#      sidecar: exit 0, the backups line names the two bundle backups and no sidecar backup
+#  18. rollback (INFRA-018/CER-031), from a set seeded at a fixed past stamp:
+#      a. complete set over live files — exit 0; each live file equals its backup, keeps
+#         its inode, and has its old bytes in <name>.bak-<fresh stamp>; the backups line
+#         names all three; no marker for the fresh stamp; no stage file left
+#      b. no set, c. no sidecar backup, d. gap-handoff backup a symlink to the sentinel —
+#         each exit 6; the target's snapshot (name, inode, sha256 of every entry) is
+#         unchanged and the sentinel intact; c and d name the backup; none names the
+#         directory
+#      e. CORRUPT_FLAG set — exit 4, names index.html
+#      f. --rollback with no value, a bad stamp, with --ref, with --dry-run — each exit
+#         64, no ssh, never "unrecognized argument"
+#  19. per-file prune report (INFRA-018/CER-030) — BACKUP_KEEP verified sets, the oldest
+#      with a non-empty directory at its gap-handoff backup: exit 5, never "no backups were
+#      pruned"; removed: names its index backup and not its gap-handoff backup; remains:
+#      names its gap-handoff backup; its index backup gone, its marker still present
 #
 # Determinism: deploy.sh refuses a deploy whose one-second backup stamp already exists in
 # its target (INFRA-012). So every deploy run that can reach the backup step starts from a
@@ -1217,6 +1235,297 @@ report "--ref class, --dry-run --ref rel/a-1.b_2 (exit 0) INFRA-017/CER-033" "$o
 
 rm -rf "$USAGE_TARGET"
 rm -f "$SSH_MARKER"
+export FORQSITE_HELP_DEPLOY_HOST="fixture-host-alias"
+export FORQSITE_HELP_DEPLOY_DIR="$FIXTURE_TARGET"
+
+# =====================================================================================
+# Shared helpers for cases 17-19 (INFRA-018).
+# =====================================================================================
+# The success block's backups line, or nothing.
+backups_line_of() { printf '%s\n' "$1" | grep '^backups ' | head -n 1 || true; }
+
+# Every entry of a directory: name, inode and sha256 (of what a regular file, or a
+# symlink's target, holds; "-" for anything else). Two equal snapshots mean nothing in
+# the directory was created, removed, replaced or rewritten.
+snapshot_dir() {
+  local dir="$1" f h
+  ( cd "$dir" && ls -A | LC_ALL=C sort | while IFS= read -r f; do
+      if [ -f "$f" ]; then h="$(sha256sum < "$f" | cut -d' ' -f1)"; else h="-"; fi
+      printf '%s %s %s\n' "$f" "$(stat -c '%i' -- "$f")" "$h"
+    done )
+}
+
+sha_of() { sha256sum < "$1" 2>/dev/null | cut -d' ' -f1 || true; }
+
+# =====================================================================================
+# Case 17 (INFRA-018/CER-037): the backups line lists only the backups the far side
+# confirmed it wrote.
+# =====================================================================================
+# (a) A deploy into an empty directory: nothing to back up, nothing listed.
+EMPTY17="$WORK_DIR/case17a-empty-target"
+rm -rf "$EMPTY17"; mkdir -p "$EMPTY17"
+export FORQSITE_HELP_DEPLOY_DIR="$EMPTY17"
+set +e
+out_17a="$(run_deploy 2>&1)"
+status_17a=$?
+set -e
+bl_17a="$(backups_line_of "$out_17a")"
+baks_17a="$(cd "$EMPTY17" && ls -A | grep '\.bak-' || true)"
+ok=0
+detail=""
+if [ "$status_17a" -ne 0 ]; then
+  ok=1; detail="expected exit 0, got $status_17a: $out_17a"
+elif [ -n "$baks_17a" ]; then
+  ok=1; detail="a backup file exists after a deploy into an empty directory: $baks_17a"
+elif [ -z "$bl_17a" ]; then
+  ok=1; detail="the success block has no backups line"
+elif printf '%s' "$bl_17a" | grep -qF '.bak-'; then
+  ok=1; detail="the backups line names a backup that was never written: $bl_17a"
+fi
+report "first deploy into an empty directory (exit 0, no backup written, backups line names none) INFRA-018/CER-037" "$ok" "$detail"
+
+# (b) Both bundles live, no sidecar: the two bundle backups are listed, no sidecar backup.
+NOSIDE17="$WORK_DIR/case17b-no-sidecar-target"
+rm -rf "$NOSIDE17"; mkdir -p "$NOSIDE17"
+echo "pre-existing live index bundle" > "$NOSIDE17/index.html"
+echo "pre-existing live gap-handoff bundle" > "$NOSIDE17/gap-handoff.html"
+export FORQSITE_HELP_DEPLOY_DIR="$NOSIDE17"
+set +e
+out_17b="$(run_deploy 2>&1)"
+status_17b=$?
+set -e
+bl_17b="$(backups_line_of "$out_17b")"
+stamp_17b="$(stamp_from_output "$out_17b")"
+ok=0
+detail=""
+if [ "$status_17b" -ne 0 ]; then
+  ok=1; detail="expected exit 0, got $status_17b: $out_17b"
+elif ! [[ "$stamp_17b" =~ $STAMP_RE ]]; then
+  ok=1; detail="could not read the run's stamp from the success block"
+elif ! printf '%s' "$bl_17b" | grep -qF "index.html.bak-$stamp_17b"; then
+  ok=1; detail="the backups line does not name index.html.bak-$stamp_17b: $bl_17b"
+elif ! printf '%s' "$bl_17b" | grep -qF "gap-handoff.html.bak-$stamp_17b"; then
+  ok=1; detail="the backups line does not name gap-handoff.html.bak-$stamp_17b: $bl_17b"
+elif printf '%s' "$bl_17b" | grep -qF 'site-provenance.json.bak-'; then
+  ok=1; detail="the backups line names a sidecar backup although no sidecar existed: $bl_17b"
+elif [ -e "$NOSIDE17/site-provenance.json.bak-$stamp_17b" ]; then
+  ok=1; detail="a sidecar backup was written although no sidecar existed"
+fi
+report "deploy over two bundles and no sidecar (exit 0, backups line names the two bundle backups only) INFRA-018/CER-037" "$ok" "$detail"
+rm -rf "$EMPTY17" "$NOSIDE17"
+
+# =====================================================================================
+# Case 18 (INFRA-018/CER-031): --rollback <stamp> restores a complete set in place,
+# sha256-verified, and refuses a missing or incomplete set with exit 6, writing nothing.
+# =====================================================================================
+RB_STAMP="20200202T020202Z"
+# The success block's first line is the first non-blank one: the stub ssh echoes an
+# empty line for every call whose stdout deploy.sh does not capture.
+
+# A fresh target per run: live files, plus (unless told otherwise) a seeded backup set at
+# RB_STAMP whose bytes end in a newline. Unmarked: a rollback does not need a marker.
+rb_fresh_target() {
+  fresh_target "$1"
+  seed_set "$1" "$RB_STAMP" unverified
+}
+
+# (a) A rollback over live files.
+RB18A="$WORK_DIR/case18a-rollback-target"
+rb_fresh_target "$RB18A"
+declare -A rb_old_sha rb_inode rb_bak_sha
+for n in "${SET_FILES[@]}"; do
+  rb_old_sha["$n"]="$(sha_of "$RB18A/$n")"
+  rb_inode["$n"]="$(stat -c '%i' "$RB18A/$n")"
+  rb_bak_sha["$n"]="$(sha_of "$RB18A/$n.bak-$RB_STAMP")"
+done
+export FORQSITE_HELP_DEPLOY_DIR="$RB18A"
+rm -f "$SSH_MARKER"
+set +e
+out_18a="$(run_deploy --rollback "$RB_STAMP" 2>&1)"
+status_18a=$?
+set -e
+fresh_18a="$(stamp_from_output "$out_18a")"
+bl_18a="$(backups_line_of "$out_18a")"
+left_stage_18a=""
+for f in "$RB18A"/.*.deploy-*; do
+  [ -e "$f" ] || [ -L "$f" ] || continue
+  left_stage_18a="$f"
+done
+ok=0
+detail=""
+if [ "$status_18a" -ne 0 ]; then
+  ok=1; detail="expected exit 0, got $status_18a: $out_18a"
+elif ! printf '%s\n' "$out_18a" | grep -v '^[[:space:]]*$' | head -n 1 | grep -q "^rolled back.*$RB_STAMP"; then
+  ok=1; detail="the success block's first line does not start 'rolled back' and name $RB_STAMP: $out_18a"
+elif ! [[ "$fresh_18a" =~ $STAMP_RE ]] || [ "$fresh_18a" = "$RB_STAMP" ]; then
+  ok=1; detail="the success block's stamp is not a fresh stamp: '$fresh_18a'"
+else
+  for n in "${SET_FILES[@]}"; do
+    [ "$ok" -eq 0 ] || break
+    if [ "$(sha_of "$RB18A/$n")" != "${rb_bak_sha[$n]}" ]; then
+      ok=1; detail="live $n does not equal $n.bak-$RB_STAMP"
+    elif [ "$(stat -c '%i' "$RB18A/$n")" != "${rb_inode[$n]}" ]; then
+      ok=1; detail="live $n was replaced (inode changed) rather than overwritten in place"
+    elif [ "$(sha_of "$RB18A/$n.bak-$fresh_18a")" != "${rb_old_sha[$n]}" ]; then
+      ok=1; detail="$n.bak-$fresh_18a does not hold $n's pre-rollback bytes"
+    elif ! printf '%s' "$bl_18a" | grep -qF "$n.bak-$fresh_18a"; then
+      ok=1; detail="the backups line does not name $n.bak-$fresh_18a: $bl_18a"
+    elif ! printf '%s\n' "$out_18a" | grep -q "^$n .*${rb_bak_sha[$n]}  verified"; then
+      ok=1; detail="the success block has no verified line for $n with its sha256"
+    fi
+  done
+fi
+if [ "$ok" -eq 0 ]; then
+  if [ -e "$RB18A/.deploy-verified-$fresh_18a" ]; then
+    ok=1; detail="a verified marker was written for the rollback's stamp"
+  elif [ -n "$left_stage_18a" ]; then
+    ok=1; detail="a stage file was left in the target: ${left_stage_18a##*/}"
+  elif ! printf '%s\n' "$out_18a" | grep -q '^pruned    none$'; then
+    ok=1; detail="the success block does not say pruned none"
+  elif ! printf '%s\n' "$out_18a" | grep '^next' | grep -q 'drift check'; then
+    ok=1; detail="the next line does not say to run the drift check"
+  elif printf '%s' "$out_18a" | grep -F -- "$RB18A" >/dev/null; then
+    ok=1; detail="the output names the target directory"
+  elif printf '%s' "$out_18a" | grep -F -- "$FORQSITE_HELP_DEPLOY_HOST" >/dev/null; then
+    ok=1; detail="the output names the ssh alias"
+  fi
+fi
+report "rollback over live files (exit 0, each file restored in place and verified, old bytes in a fresh backup set, no marker, no stage left) INFRA-018/CER-031" "$ok" "$detail"
+rm -rf "$RB18A"
+
+# (b)-(d): refusals. Each writes nothing: the target's snapshot (every name, inode and
+# sha256) is the same before and after, and the sentinel is intact.
+check_rb_refusal() {
+  local name="$1" dir="$2" names_backup="$3"
+  local before after out status ok=0 detail=""
+  reset_sentinel
+  before="$(snapshot_dir "$dir")"
+  export FORQSITE_HELP_DEPLOY_DIR="$dir"
+  set +e
+  out="$(run_deploy --rollback "$RB_STAMP" 2>&1)"
+  status=$?
+  set -e
+  after="$(snapshot_dir "$dir")"
+  if [ "$status" -ne 6 ]; then
+    ok=1; detail="expected exit 6, got $status: $out"
+  elif [ "$before" != "$after" ]; then
+    ok=1; detail="the target changed although the rollback was refused"
+  elif ! sentinel_intact; then
+    ok=1; detail="the sentinel was written through"
+  elif [ -n "$names_backup" ] && ! printf '%s' "$out" | grep -qF -- "$names_backup"; then
+    ok=1; detail="the refusal does not name $names_backup: $out"
+  elif printf '%s' "$out" | grep -F -- "$dir" >/dev/null; then
+    ok=1; detail="the refusal names the target directory"
+  fi
+  report "$name" "$ok" "$detail"
+}
+
+RB18B="$WORK_DIR/case18b-no-set-target"
+fresh_target "$RB18B"
+check_rb_refusal "rollback to a stamp with no backup set (exit 6, nothing written, directory not named) INFRA-018/CER-031" "$RB18B" ""
+rm -rf "$RB18B"
+
+RB18C="$WORK_DIR/case18c-no-sidecar-backup-target"
+rb_fresh_target "$RB18C"
+rm -f "$RB18C/site-provenance.json.bak-$RB_STAMP"
+check_rb_refusal "rollback to a set with no sidecar backup (exit 6, nothing written, names the sidecar backup) INFRA-018/CER-031" "$RB18C" "site-provenance.json.bak-$RB_STAMP"
+rm -rf "$RB18C"
+
+RB18D="$WORK_DIR/case18d-symlinked-backup-target"
+rb_fresh_target "$RB18D"
+rm -f "$RB18D/gap-handoff.html.bak-$RB_STAMP"
+ln -s "$SENTINEL" "$RB18D/gap-handoff.html.bak-$RB_STAMP"
+check_rb_refusal "rollback to a set whose gap-handoff.html backup is a symlink (exit 6, nothing written, sentinel intact, names that backup) INFRA-018/CER-031" "$RB18D" "gap-handoff.html.bak-$RB_STAMP"
+rm -rf "$RB18D"
+
+# (e) The stub corrupts the live index.html after each copy step: exit 4, names it.
+rb_fresh_target "$FIXTURE_TARGET"
+export FORQSITE_HELP_DEPLOY_DIR="$FIXTURE_TARGET"
+: > "$CORRUPT_FLAG"
+set +e
+out_18e="$(run_deploy --rollback "$RB_STAMP" 2>&1)"
+status_18e=$?
+set -e
+rm -f "$CORRUPT_FLAG"
+ok=0
+detail=""
+if [ "$status_18e" -ne 4 ]; then
+  ok=1; detail="expected exit 4, got $status_18e: $out_18e"
+elif ! printf '%s' "$out_18e" | grep -q "index.html"; then
+  ok=1; detail="the failure does not name index.html: $out_18e"
+elif printf '%s' "$out_18e" | grep -F -- "$FIXTURE_TARGET" >/dev/null; then
+  ok=1; detail="the failure names the target directory"
+fi
+report "rollback whose restored index.html fails the far-side hash (exit 4, names index.html) INFRA-018/CER-031" "$ok" "$detail"
+fresh_target "$FIXTURE_TARGET"
+
+# (f) Usage: each form exits 64 before any ssh, and is not reported as an unknown flag.
+RB18F="$WORK_DIR/case18f-usage-target"
+rb_fresh_target "$RB18F"
+export FORQSITE_HELP_DEPLOY_DIR="$RB18F"
+check_rb_usage() {
+  local name="$1"; shift
+  local out status ok=0 detail=""
+  rm -f "$SSH_MARKER"
+  set +e
+  out="$(run_deploy "$@" 2>&1)"
+  status=$?
+  set -e
+  if [ "$status" -ne 64 ]; then
+    ok=1; detail="expected exit 64, got $status: $out"
+  elif [ -f "$SSH_MARKER" ]; then
+    ok=1; detail="stub-ssh marker present — ssh was invoked"
+  elif printf '%s' "$out" | grep -qi 'unrecognized argument'; then
+    ok=1; detail="the refusal reports an unrecognized argument: $out"
+  fi
+  report "$name" "$ok" "$detail"
+}
+check_rb_usage "rollback usage, --rollback with no value (exit 64, no ssh, not an unknown flag) INFRA-018/CER-031" --rollback
+check_rb_usage "rollback usage, a stamp outside the class (exit 64, no ssh, not an unknown flag) INFRA-018/CER-031" --rollback 2020-02-02
+check_rb_usage "rollback usage, --rollback with --ref (exit 64, no ssh, not an unknown flag) INFRA-018/CER-031" --rollback "$RB_STAMP" --ref HEAD
+check_rb_usage "rollback usage, --rollback with --dry-run (exit 64, no ssh, not an unknown flag) INFRA-018/CER-031" --rollback "$RB_STAMP" --dry-run
+rm -rf "$RB18F"
+
+# =====================================================================================
+# Case 19 (INFRA-018/CER-030): a prune failure is reported file by file.
+# =====================================================================================
+PRUNE19="$WORK_DIR/case19-prune-report-target"
+fresh_target "$PRUNE19"
+# BACKUP_KEEP verified sets: with this deploy's own set, exactly the oldest is pruned.
+p19_stamps=()
+for i in $(seq 1 "$BACKUP_KEEP"); do p19_stamps+=("$(printf '20200303T%06dZ' "$i")"); done
+for s in "${p19_stamps[@]}"; do seed_set "$PRUNE19" "$s" verified; done
+p19_old="${p19_stamps[0]}"
+# A non-empty directory where the oldest set's gap-handoff backup is: rm -f cannot remove it.
+rm -f "$PRUNE19/gap-handoff.html.bak-$p19_old"
+mkdir -p "$PRUNE19/gap-handoff.html.bak-$p19_old/blocker"
+export FORQSITE_HELP_DEPLOY_DIR="$PRUNE19"
+set +e
+out_19="$(run_deploy 2>&1)"
+status_19=$?
+set -e
+removed_19="$(printf '%s\n' "$out_19" | grep "in backup set $p19_old, removed:" || true)"
+remains_19="$(printf '%s\n' "$out_19" | grep "in backup set $p19_old, remains:" || true)"
+ok=0
+detail=""
+if [ "$status_19" -ne 5 ]; then
+  ok=1; detail="expected exit 5, got $status_19: $out_19"
+elif printf '%s\n' "$out_19" | grep -qi "no backups were pruned"; then
+  ok=1; detail="the report says no backups were pruned although index.html.bak-$p19_old was removed: $out_19"
+elif ! printf '%s' "$removed_19" | grep -qF "index.html.bak-$p19_old"; then
+  ok=1; detail="the removed: line does not name index.html.bak-$p19_old: $out_19"
+elif printf '%s' "$removed_19" | grep -qF "gap-handoff.html.bak-$p19_old"; then
+  ok=1; detail="the removed: line names gap-handoff.html.bak-$p19_old, which remains: $out_19"
+elif ! printf '%s' "$remains_19" | grep -qF "gap-handoff.html.bak-$p19_old"; then
+  ok=1; detail="the remains: line does not name gap-handoff.html.bak-$p19_old: $out_19"
+elif [ -e "$PRUNE19/index.html.bak-$p19_old" ]; then
+  ok=1; detail="index.html.bak-$p19_old was not removed"
+elif [ ! -e "$PRUNE19/.deploy-verified-$p19_old" ]; then
+  ok=1; detail="the failed set's marker was removed, so no later deploy would retry it"
+fi
+report "prune failure reported per file (exit 5, removed: and remains: lines name the failed set's files) INFRA-018/CER-030" "$ok" "$detail"
+rm -rf "$PRUNE19"
+
 export FORQSITE_HELP_DEPLOY_HOST="fixture-host-alias"
 export FORQSITE_HELP_DEPLOY_DIR="$FIXTURE_TARGET"
 
