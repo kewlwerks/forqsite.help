@@ -62,6 +62,41 @@ approved it on 2026-09-30.
 
 Each story is specced, and the spec reviewed by the operator, before it is built.
 
+## First release (2026-10-01)
+
+CONTENT-040's post-merge step ran as planned, in this order:
+1. The bootstrap tag `rel-1fda3228`, an annotated tag on cp-13's commit, was created and then
+   pushed with the operator's approval.
+2. The story's Tests block was re-run with restamp present: `ALL-OK`, no `SKIP`.
+3. `scripts/release.sh cp-PM105-main` ran as a dry run. Its output matched the spec line for
+   line.
+4. On the operator's go, `scripts/release.sh --yes cp-PM105-main` exited 0.
+   - The restamp moved the pin from `1fda3228` to `94f5c339`. Of 42 claims, 40 are `open` and
+     1 is `changed`.
+   - It made release commit `d4c3991` and annotated tag `rel-94f5c339`.
+   - The deploy and drift check passed: the served bytes match the ref for both bundles.
+   - It then pushed main, carrying the phase's 39 reviewed commits, and the tag.
+
+After the release, the checker at the target reports 42 untouched claims and 1 closed record,
+0 reopened. GAP-006 is closed, and its fix `8112020e` is now an ancestor of `release.commit`.
+
+One defect surfaced: `deploy.sh --ref` records an annotated tag's object sha (`60fd0cf`), not
+the commit it peels to. The bytes are correct, but the provenance sidecar names the tag
+object. That is filed as CER-063.
+
+Additional rulings made during the build (2026-10-01) are recorded in each story's spec:
+- the `--ref` class (INFRA-017);
+- the rollback design (INFRA-018);
+- strict `--no-commits` and `GIT_NO_LAZY_FETCH` (INFRA-019);
+- the restamp defaults and the bootstrap tag (INFRA-020);
+- the ahead listing and the printed rollback command (INFRA-021);
+- the explicit release target and the note sweep (CONTENT-040).
+
+At the operator's direction, INFRA-018, INFRA-020 and INFRA-021 each got an adversarial fable
+proving pass between build and review. The passes on INFRA-018 and INFRA-020 found MEDIUM
+defects, which were fixed under spec amendments before review. The pass on INFRA-021 found
+none.
+
 ## Stories
 
 | ID | Title | Status |
@@ -81,7 +116,7 @@ this phase, record the management surface before the phase is checkpointed.
 
 | Object | Management surface | Exception |
 |---|---|---|
-| | | |
+| none | — | This phase adds no database object. The `closed[]` manifest array and `rel-<sha>` tags are managed by review stories, `restamp.py` and `release.sh`, and documented in `docs/architecture.md`. `.release-report.txt` is a gitignored, regenerated report with no editable fields. |
 
 ---
 
