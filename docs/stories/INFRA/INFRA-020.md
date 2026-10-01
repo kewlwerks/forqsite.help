@@ -104,6 +104,17 @@ clone.
   - **CONTENT-040's own edits change these counts.** It moves C-026 to `closed[]` and rewrites
     the GAP-006 mentions as `changed` claims.
 
+**Amended 2026-10-01 after the proving pass.** A proving pass on the build (story commit
+`4881c24`) found two MEDIUM defects. Instructions 2, 3, 6 and 9 and the mutation list now
+cover both.
+- **A write failure escaped the exit-5 handler.** `tempfile.mkstemp` for the sibling-temp
+  write sat outside the `try`. With a read-only `docs/`, a clean run wrote both bundles, then
+  died with an uncaught `PermissionError`: it exited 1 instead of 5, and the traceback printed
+  the repository's absolute path.
+- **The stamp-date check counted substrings.** For a stamp dated 2026-01-01 whose text says
+  `… · 11 january 2026`, `text.count('1 january 2026')` is 1. The exit-8 check passed, and
+  `--date 2026-02-03` then wrote `13 february 2026` while the manifest said 2026-02-03.
+
 ## Requires
 
 - INFRA-019 is merged. `stale-claims.py --no-commits` exists, and restamp relies on its exit
@@ -122,7 +133,9 @@ behaves as the Instructions below specify:
   `bundle-template.py verify`.
 
 `scripts/restamp-selftest.sh` proves each refusal, a clean restamp, a carried `changed` claim,
-an `open` re-derivation and the corrupted-bundle guard against fixture repos. The Tests block
+an `open` re-derivation and the corrupted-bundle guard against fixture repos. It also
+proves the two amended cases: a stamp date that is not a whole token exits 8, and a write
+failure exits 5 with no traceback and no path. The Tests block
 below passes, the docs name restamp and the bootstrap, and § Release commit in `phase-12.md`
 no longer mirrors the manifest.
 
@@ -154,7 +167,7 @@ no longer mirrors the manifest.
    | 9 | either bundle fails `bundle-template.py verify` before any edit (the corrupted-bundle guard) |
    | 7 | previous release. There is no tag matching `^rel-[0-9a-f]{8}$`. The two newest such tags share a creation time. The newest is not `rel-<release.commit[:8]>`. That tag's commit lacks either page. |
    | 3 | `stale-claims.py --no-commits --manifest <manifest> <target sha>` exits 3. Print its stdout. |
-   | 5 | a git call, the checker (any exit other than 0 or 3), or `bundle-template.py` fails unexpectedly |
+   | 5 | a git call, the checker (any exit other than 0 or 3), or `bundle-template.py` fails unexpectedly; any filesystem operation of the write phase fails (Instruction 6); or any other unexpected exception (the top-level guard, Instruction 6) |
    | 8 | the manifest is inconsistent. This covers stamp records (Instruction 3), results derivation (Instruction 4) and the Known-gaps assertion (Instruction 5). |
    | 9 | a stamp-occurrence assertion (Instruction 3), or a post-inject verify or re-extract mismatch (Instruction 6) |
    | 0 | restamped. With `--dry-run`, it would restamp. |
@@ -170,10 +183,18 @@ no longer mirrors the manifest.
      - contain its `date` exactly once in `text`, in exactly one of two forms: ISO, or the
        long form `f'{d.day} {MONTHS[d.month-1]} {d.year}'`. `MONTHS` is a fixed tuple of
        lowercase English month names; never use `strftime`, which follows the locale.
+     - **Count the date as a token, never as a substring** (amended 2026-10-01). A match
+       must have no digit immediately before or after it:
+       `re.compile(r'(?<![0-9])' + re.escape(form) + r'(?![0-9])')`, for both the ISO and
+       the long form. So `1 january 2026` does not match inside `11 january 2026`, and
+       `2026-01-10` does not match inside `12026-01-10`.
 
      If any of these fails, exit 8.
    - **The new text** replaces `<slug>@<old8>` with `<slug>@<new8>`, and replaces the old date
-     with `--date` in the same form.
+     with `--date` in the same form. The date replacement uses the same bounded pattern:
+     after the commit is replaced, the old date must still match exactly once as a token
+     (otherwise exit 8), and only that match is replaced. A plain `str.replace` of the date
+     is not allowed.
    - **Per page, on the extracted template.**
      - **Before the edit:**
        - `<slug>@<old8>` occurs exactly as many times as that page has stamp records;
@@ -230,6 +251,19 @@ no longer mirrors the manifest.
        exit 9.
    - **Then write in place,** only when not `--dry-run`: both bundles first, then the
      manifest in its exact serialisation. Remove the temp directory on every path.
+   - **Every filesystem operation of the write phase is inside the exit-5 handler**
+     (amended 2026-10-01). That covers creating the sibling temp file (`mkstemp`), writing
+     it, `fsync`, `copymode` and the `replace` over the original.
+     - A failure removes the sibling temp file if it was created.
+     - It exits 5 with a message that names the file by basename and gives the recovery:
+       the tree had no tracked changes before the run, so `git checkout -- .` restores it.
+   - **No traceback, and no absolute path, ever reaches stdout or stderr** (amended
+     2026-10-01). `main()` calls a module-level `run()` inside a top-level guard. The guard
+     maps any exception other than the tool's own failure type (and `SystemExit`) to exit 5,
+     with a fixed message: `unexpected internal failure (<exception class name>)` plus the
+     same recovery. The message never includes `str()` of the exception, which can carry a
+     path. A write failure must be reported by the write-phase handler, never by this
+     guard.
    - **Call `bundle-template.py` and `stale-claims.py` as subprocesses** with
      `sys.executable`, resolved from the script's own directory.
    - **Git hardening, as in `stale-claims.py`.**
@@ -339,9 +373,28 @@ no longer mirrors the manifest.
        - Known-gaps evidence missing a pair (8), and with a duplicate pair (8);
        - a stamp text occurring once too often (9), and `<slug>@<R8>` outside any stamp
          (9);
-       - a bundle with one `/` replaced by `/`, so it parses but fails verify (9);
+       - a bundle with one `\u002F` replaced by `/`, so it parses but fails verify (9);
        - `FORQSITE_CLONE` unset (2);
        - no target, an unknown option, and `--date 2026-2-3` (all 64).
+     - **Amended cases (2026-10-01).**
+       - A long-form stamp whose `date` is 2026-01-01 but whose text, on the page and in
+         the manifest, says `11 january 2026` (exit 8, nothing written). Also an ISO stamp
+         whose text has `12026-01-10` where the date is 2026-01-10 (exit 8, nothing
+         written).
+       - A read-only `docs/` directory (`chmod a-w`), restored after the run. A clean
+         restamp must:
+         - exit 5;
+         - print no `Traceback` and no fixture or work-directory path;
+         - print a message that names `claims-manifest.json`, contains `git checkout -- .`,
+           and is not the top-level guard's message;
+         - leave the manifest byte-identical and no `.restamp-*` file in `docs/`.
+
+         Probe first that the directory really refuses a write for this user. If it does
+         not (for example, under root), report the case as FAIL with that reason, never as
+         a pass.
+       - The top-level guard. Load `restamp.py` with `importlib`, replace its `run` with a
+         function that raises `RuntimeError` carrying a work-directory path, and call
+         `main()`. It must exit 5 with no `Traceback` and without that path.
      - **Hygiene.**
        - No fixture or work-directory path appears in any output.
        - Every logged git subcommand is in the read-only set of restamp plus the checker:
@@ -358,7 +411,9 @@ no longer mirrors the manifest.
     - The tooling runs before publication, which the Self-containment value permits.
 
 **Mutations for the reviewer.** Apply each to `restamp.py`, run the selftest, and confirm it
-goes red. The spec-time prototype went red on every one.
+goes red. The spec-time prototype went red on every one. The amended mutations were
+checked on a prototype built from `4881c24` with the amendments applied. The unamended
+`4881c24` fails 5 cases of the amended selftest.
 - Read previous pages from `HEAD`, not the tag.
 - Zero-pad the long-form day, or use `strftime('%B')`.
 - Delete the pre-edit `verify`.
@@ -374,6 +429,13 @@ goes red. The spec-time prototype went red on every one.
 - Write any file before the last check.
 - Count untracked files as dirty.
 - Ignore `--dry-run`.
+- Amended 2026-10-01:
+  - Move `mkstemp` back outside the write-phase `try`. The read-only case must then go red,
+    because the top-level guard's message replaces the write failure's.
+  - Remove the top-level guard. The guard case and the path-hygiene case must go red.
+  - Count and replace stamp dates as substrings (`str.count`/`str.replace`). Both amended
+    date cases must go red.
+  - Drop the leading `(?<![0-9])` bound. Both amended date cases must go red.
 
 **Length.** This spec runs well past the ~36-line baseline. The tool writes the published
 pages and the manifest at once, and every refusal and every assertion is a decision the
@@ -417,6 +479,8 @@ for code in 0 2 3 4 5 6 7 8 9 64; do grep -qE "^ +$code +[^ ]" "$S/help" || { ec
 # 3. the real clone, in a scratch clone of this repo: no tag -> 7; tag at cp-13 -> 3 (GAP-006)
 git clone -q . "$S/fh"
 cp scripts/restamp.py "$S/fh/scripts/"
+git -C "$S/fh" add scripts/restamp.py
+git -C "$S/fh" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m 'restamp under test'
 git -C "$S/fh" tag -d rel-1fda3228 > /dev/null 2>&1 || true
 set +e
 python3 "$S/fh/scripts/restamp.py" --dry-run cp-PM105-main > "$S/r7" 2>&1; rc=$?
