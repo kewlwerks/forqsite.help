@@ -51,6 +51,23 @@ The operator confirmed all four design choices:
 The operator also directed that, after the build and before review, a separate proving agent
 tries to break the rollback.
 
+**Amended 2026-10-01 after the proving pass.** The proving pass found three things, and this
+amendment handles each.
+- **MEDIUM.** A 0-byte or partial backup was accepted, restored and reported as verified. The
+  reproduction: take a complete set, run `: > index.html.bak-S`, then `--rollback S`. The live
+  `index.html` became empty and the run exited 0. The cause is that the backup step's
+  `cat <name> > <bak>` leaves a partial file when the write fails (ENOSPC, for example), so the
+  set still looks complete. The amendment makes two fixes:
+  - the backup step writes atomically;
+  - the inventory counts an empty backup as missing.
+- **LOW.** A repeated `--ref` or `--rollback` was accepted, and the last value won. A repeated
+  option is now a usage error.
+- **LOW, documented, no change.** A file that was absent at deploy time has no backup in that
+  deploy's set, so that set is incomplete and `--rollback` refuses it. This behaviour is kept
+  and stated in Ensures and Out of scope.
+
+Each fix gets a selftest case with its own token. The pinned pre-story commit is unchanged.
+
 ## Requires
 
 INFRA-017 is complete and merged. This story builds on its `deploy.sh`: usage exits 64, `REF_RE`,
@@ -60,13 +77,20 @@ and the environment wins over `deploy.env`. The pre-story commit used by the Tes
 
 ## Ensures
 
-The three fixes hold, each proven by selftest cases whose report names end in
-`INFRA-018/CER-0NN`. Every such case passes on the fixed tree and fails when `deploy.sh` is
-reverted to the pre-story commit. The fixes are:
+The fixes below hold, each proven by selftest cases whose report names end in one of these
+tokens: `INFRA-018/CER-0NN`, `INFRA-018/ATOMIC`, `INFRA-018/EMPTY` or `INFRA-018/REPEAT`.
+Every such case passes on the fixed tree and fails when `deploy.sh` is reverted to the
+pre-story commit. The fixes are:
 - `deploy.sh --rollback <stamp>` restores all three files from a complete set, in place and
   sha256-verified. It refuses a missing or incomplete set with exit `6` and writes nothing.
+  - A set is incomplete when any of its three backups is absent, is not a regular file, or is
+    empty (0 bytes).
+  - A set whose deploy found a file absent therefore has no backup of that file, and it too is
+    refused.
+- A backup write that fails leaves no `<name>.bak-<stamp>` name and no temporary file behind.
 - The `backups` line names only the backups the far side confirmed it wrote.
 - A prune failure names each removed file and each remaining file of the failed set.
+- Any option given more than once exits `64` before any ssh call.
 
 The header, `docs/architecture.md`, the `docs/checkpoints.md` preamble and the three backlog rows
 state the new behaviour, and every existing selftest still passes.
@@ -78,7 +102,10 @@ state the new behaviour, and every existing selftest still passes.
    - Each of these exits `64` before any git or ssh work:
      - `--rollback` with no value;
      - a stamp outside `^[0-9]{8}T[0-9]{6}Z$`;
-     - `--rollback` together with `--ref` or `--dry-run`.
+     - `--rollback` together with `--ref` or `--dry-run`;
+     - any of `--ref`, `--rollback` or `--dry-run` given more than once. The message says
+       "given more than once" and names the option. Never let the last value win (amended
+       2026-10-01).
    - None of those refusals says "unrecognized argument", because that text is kept for unknown
      flags.
    - The usage block in the header gains the line `#   deploy.sh --rollback <stamp>`, written
@@ -91,11 +118,15 @@ state the new behaviour, and every existing selftest still passes.
      stamp S".
    - **Inventory.** First, one ssh call reports the far-side sha256 of each of
      `index.html.bak-S`, `gap-handoff.html.bak-S` and `site-provenance.json.bak-S`. A backup
-     counts only if it is a regular file and not a symlink. deploy.sh accepts only lines whose
-     name is one of those three exact names and whose hash is 64 hex characters, because the far
-     side's output is untrusted.
-   - **Refusal.** If any of the three backups is absent, the rollback exits `6` before any write
-     and names the absent backups. It must never name the directory.
+     counts only if it is a regular file, is not a symlink, and is non-empty (`[ -s ]`).
+     - Served bundles and the sidecar are never legitimately empty, so an empty backup can only
+       be the remains of a failed write. It must never be restored (amended 2026-10-01).
+     - deploy.sh accepts only lines whose name is one of those three exact names and whose hash
+       is 64 hex characters, because the far side's output is untrusted.
+   - **Refusal.** If any of the three backups does not count, the rollback exits `6` before any
+     write and names those backups. It must never name the directory.
+     - This includes the set left by a deploy that found a live file absent, because that set
+       has no backup of the file. Keep this behaviour (proving pass, 2026-10-01).
      - This includes a set with no sidecar backup. The first deploy that wrote a sidecar leaves
        exactly that kind of set, and restoring its bundles under today's sidecar would publish a
        provenance claim for a commit that is no longer served.
@@ -122,8 +153,18 @@ state the new behaviour, and every existing selftest still passes.
      - `pruned    none`;
      - the `next` line says to run the drift check.
 
-3. **Backups line, CER-037.**
-   - `remote_backup_cmd` prints a fixed token on stdout only after the `cat > <bak>` write
+3. **Backups line, CER-037, and an atomic backup step (amended 2026-10-01).**
+   - **Atomic write.** `remote_backup_cmd` never writes to `<name>.bak-<stamp>` directly:
+     - It copies the live file into a temporary file made by the far side's `mktemp`, in the
+       same directory (for example `./.<name>.backup-XXXXXXXXXX`).
+     - It removes that temporary file on every exit path, as `remote_copy_cmd` does.
+     - Only after the copy succeeds does it publish the temporary file under the backup name,
+       with `ln -- <tmp> <bak>`. A hard link fails if the name already exists in any form, a
+       dangling symlink included, so it keeps INFRA-012's noclobber guarantee. A plain `mv`
+       would replace a name planted there.
+     - On failure, no `.bak-<stamp>` name exists. The backup file then has `mktemp`'s mode,
+       0600, which is fine because backups are never served.
+   - **Token.** `remote_backup_cmd` prints a fixed token on stdout only after the publish
      succeeds. deploy.sh records a backup's name only when that token comes back.
    - Factor this into one helper that both the deploy steps and the rollback use.
    - The `backups` line lists the recorded names. With none recorded, it reads
@@ -150,7 +191,7 @@ state the new behaviour, and every existing selftest still passes.
      nothing was written`.
    - Make the retention bullet's "rollback copy" wording point at `--rollback`.
 
-6. **Selftests** (`deploy-selftest.sh`, appended as cases 17 to 19, and listed in its header).
+6. **Selftests** (`deploy-selftest.sh`, appended as cases 17 to 22, and listed in its header).
    - Each report name ends with its token. No other case carries an `INFRA-018/` token.
    - Each case must report `FAIL`, not abort the script, when run against the pre-story
      `deploy.sh`.
@@ -181,6 +222,20 @@ state the new behaviour, and every existing selftest still passes.
      - The `removed:` line names that set's `index.html.bak-` and not its `gap-handoff.html.bak-`.
      - The `remains:` line names its `gap-handoff.html.bak-`.
      - Its `index.html.bak-` is gone and its marker is still present.
+   - **20, ATOMIC.** In a fresh target, make the live `index.html` unreadable (`chmod 000`), so
+     the far side's read fails after the write target is opened. Then deploy.
+     - Expect exit 5. No entry whose name contains `index.html.ba` exists in `ls -A`, which
+       covers both a backup name and a temporary file.
+     - Restore the mode afterwards.
+     - If `cat` can read the file anyway (when running as root, for example), report the case
+       as `FAIL` with a precondition message, so that it cannot pass vacuously.
+   - **21, EMPTY.** Seed a complete set, run `: > index.html.bak-<S>`, then roll back to `<S>`.
+     Expect the 18(b) to 18(d) refusal contract: exit 6, identical snapshots, the refusal names
+     `index.html.bak-<S>`, and it does not name the directory.
+   - **22, REPEAT.** Run `--ref HEAD --ref HEAD`, `--dry-run --dry-run` and
+     `--rollback <S> --rollback <S>`, each in a fresh target.
+     - Each gives exit 64 with no ssh run.
+     - The output says "more than once".
 
 7. **Docs.**
    - In `docs/architecture.md` § Deploy, add one sentence to the `deploy.sh` bullet stating
@@ -209,8 +264,9 @@ Spec-preflight flags three constants, and all three are intended:
 
 The scanner misses shell definitions.
 
-Proportionality: this spec is longer than the baseline because it carries three independent
-fixes, and one of them is a new mode with a refusal contract. Each fix needs cases that fail
+Proportionality: this spec is longer than the baseline. It carries three independent fixes
+plus the proving pass's amendments, and one of the fixes is a new mode with a refusal
+contract. Each fix needs cases that fail
 without it.
 
 ## Tests
@@ -231,7 +287,7 @@ PRE=38d307597b3f7ee5e23a69e26538de48927ba24e
 t="$(mktemp -d)"; mkdir "$t/scripts"; cp scripts/*.sh scripts/*.py "$t/scripts/"; git -C "$t" init -q
 git show "$PRE:scripts/deploy.sh" > "$t/scripts/deploy.sh"
 mut="$(bash "$t/scripts/deploy-selftest.sh" 2>&1)"; rm -rf "$t"
-for pair in CER-037:2 CER-031:9 CER-030:1; do
+for pair in CER-037:2 CER-031:9 CER-030:1 ATOMIC:1 EMPTY:1 REPEAT:3; do
   c="${pair%%:*}"; min="${pair##*:}"
   n="$(printf '%s\n' "$out" | grep -c "^PASS: .*INFRA-018/$c\$")"
   m="$(printf '%s\n' "$mut" | grep -c "^FAIL: .*INFRA-018/$c ")"
@@ -265,6 +321,14 @@ Verification when this spec was written:
   - the no-failing-case regression guard.
 - **Against a throwaway implementation.** The whole block passed, and so did every selftest.
   That implementation has since been deleted.
+- **Re-run when amended (2026-10-01).** I ran the block again:
+  - against main at `0509c0a`, where `deploy.sh` is unchanged since the pinned commit: 15
+    failures, including all six count checks;
+  - against a prototype built on the INFRA-018 build branch with the amendments applied:
+    all passed, and so did every selftest.
+
+  The new ATOMIC, EMPTY and REPEAT cases also fail against the build branch's unamended
+  `deploy.sh`, which is the proving pass's defect.
 
 ## Out of scope
 
@@ -272,6 +336,12 @@ Verification when this spec was written:
   2026-09-30, the operator runs `--rollback` by hand.
 - Restoring a set that is incomplete, including a set whose only gap is a missing sidecar
   backup. It is refused with exit 6, and such a set is restored by hand if it is ever wanted.
+- Rolling back to the state before a deploy that found a live file absent. That deploy's set
+  has no backup of the file, so it is incomplete and refused with exit 6. This is
+  deliberate: rollback restores whole sets and never deletes a live file (proving pass,
+  2026-10-01).
+- Restoring an empty (0-byte) backup. It is treated as missing, because served files are
+  never legitimately empty.
 - `--rollback --dry-run`. It is refused with exit 64 rather than half-implemented, since a dry
   run makes no ssh call and so could not check the set.
 - Pruning or marking the backup sets a rollback writes. They are unmarked, so retention never
