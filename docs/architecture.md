@@ -68,7 +68,15 @@ forqsite.help/
 │   ├── restamp.py          # pins a new release commit in the manifest and both bundles — see Restamp below
 │   ├── restamp-selftest.sh # fixture selftest for restamp.py
 │   ├── release.sh          # the attended release job: check, restamp, commit, tag, deploy, drift-check, push — see Release job below
-│   └── release-selftest.sh # fixture selftest for release.sh
+│   ├── release-selftest.sh # fixture selftest for release.sh
+│   ├── deploy.sh           # copies both bundles and the provenance sidecar to the served directory, verified; --rollback <stamp>
+│   ├── deploy-selftest.sh  # fixture selftest for deploy.sh (stub ssh)
+│   ├── drift-check.sh      # compares the bytes a request returns against a ref
+│   ├── drift-check-selftest.sh # fixture selftest for drift-check.sh (local server)
+│   ├── make-provenance.sh  # writes the site-provenance.json sidecar for a ref
+│   ├── provenance-selftest.sh  # fixture selftest for make-provenance.sh
+│   ├── read-deploy-env.sh  # reads the deploy target from the environment or deploy.env (environment wins)
+│   └── deploy.env.example  # template for the gitignored, operator-local deploy.env
 ├── docs/
 │   └── claims-manifest.json  # every stamped claim both pages make about forqsite, and where its evidence lives
 └── README.md
@@ -163,10 +171,11 @@ the repository, and the manifest last. It never commits, tags, pushes or deploys
 rewrites no prose. The previous release, whose pages each quote is compared against, is
 the newest `rel-<forqsite short sha>` tag in this repository by creation time, never by
 name, and it must be the tag of the current `release.commit`. These tags are annotated.
-The first, `rel-1fda3228`, is bootstrapped by hand on main after INFRA-020 merges, at
-cp-13's commit, whose pages are byte-identical to the deployed cp-12 pages that pin
-1fda3228; the exact command is in the script's header, and it is pushed only once the
-operator approves it. Later `rel-` tags are INFRA-021's job. A mechanical restamp means, as
+The first, `rel-1fda3228`, was bootstrapped by hand on 2026-10-01, with the operator's
+approval, at cp-13's commit, whose pages are byte-identical to the deployed cp-12 pages that
+pinned 1fda3228. The exact command is in the script's header. Every later `rel-` tag is
+written by `release.sh`, starting with `rel-94f5c339` at the first attended release
+(docs/phases/phase-14.md § First release). A mechanical restamp means, as
 ruled by the operator on 2026-09-30, that every recorded evidence check passed at this
 commit. That is weaker than Phase 12's hand verification, and the meaning is revisited
 after two releases. Its usage, refusals and exit codes live in its own header docstring,
@@ -418,7 +427,7 @@ Both rules were ruled by the operator on 2026-09-29 in INFRA-016's spec.
 # Build / test
 none — static HTML, open file:// or serve with any static file server
 
-# Run all tests
+# Run all tests (single source: CLAUDE.build.md § Build standards, test_command)
 for t in scripts/*-selftest.sh; do bash "$t" && continue; exit 1; done
 ```
 

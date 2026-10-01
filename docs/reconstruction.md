@@ -113,7 +113,7 @@ _(not yet specified — populate docs/ideology.md Comparison basis)_
 
 
 
-- `gap-handoff.html` mixes a live backlog (GAP-002…011, after GAP-001 was pruned as resolved upstream) into the same generated-bundle format as the reference docs. As gap items get resolved upstream in `nullvalues/forqsite`, this file needs pruning — a static generated bundle is an awkward fit for something that should track live status; a future iteration might want a lighter-weight status marker instead of a full re-export per prune.
+- `gap-handoff.html` mixes a live backlog of open GAP entries (a closed gap is removed from the page and its number is never reused) into the same generated-bundle format as the reference docs. As gap items get resolved upstream in `nullvalues/forqsite`, this file needs pruning — a static generated bundle is an awkward fit for something that should track live status; a future iteration might want a lighter-weight status marker instead of a full re-export per prune.
 
 
 

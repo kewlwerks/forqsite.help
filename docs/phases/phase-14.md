@@ -122,9 +122,25 @@ this phase, record the management surface before the phase is checkpointed.
 
 ### CP-14 Cold-eyes checklist
 
-- [ ] written-never-read — does anything this phase persists have no reader?
-- [ ] required-never-written — does any read path depend on a value no writer produces?
-- [ ] duplicate state — is any fact now stored twice with independent writers?
-- [ ] half-implementation — is any branch unreachable, or any producer without its consumer?
+- [x] written-never-read — none unintended.
+  - `.release-report.txt` is read by the operator, whom the paste-safe summary points to it.
+    It is deliberately gitignored.
+  - The `holds:` IDs in the release commit body are an audit trail for people. They are
+    revisited after two releases (phase decision 2).
+- [x] required-never-written — none.
+  - `restamp.py` needs a `rel-<release.commit[:8]>` tag. The bootstrap wrote the first one
+    and `release.sh` writes every later one.
+  - `closed[]` now has a writer (CONTENT-040) and a reader (the checker).
+- [x] duplicate state — two instances, both accepted.
+  - **The pin.** The `rel-` tags mirror the manifest's `release.commit`, with independent
+    writers (`release.sh` and `restamp.py`). `restamp.py` refuses with exit 7 when the
+    newest tag is not the pin's, so the two cannot drift apart silently.
+  - **The test command.** It appears in CLAUDE.build.md, in CLAUDE.md (a `FAIL:`-marking
+    variant), in the untracked pairmode context file, and in architecture.md. Architecture
+    now names CLAUDE.build.md as the single source.
+- [x] half-implementation — two items, both filed.
+  - `deploy.sh --ref` records an annotated tag's object sha as provenance (CER-063). The
+    bytes are correct but the id is wrong.
+  - The exit-11 partial-write path in `release.sh` has no selftest case (CER-062).
 
-— developer fills in after phase completion —
+Filled 2026-10-01 at checkpoint, from the intent and docs gates.

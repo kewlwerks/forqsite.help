@@ -1,6 +1,6 @@
 # forqsite.help — Cold-Eyes Review (CER) Backlog
 
-*Last updated: 2026-09-21*
+*Last updated: 2026-10-01*
 
 This file is the structured triage log for findings from external cold-eyes reviews.
 Each finding is assigned to one quadrant. Findings are not deleted — resolved findings

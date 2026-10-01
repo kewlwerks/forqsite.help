@@ -23,7 +23,7 @@ Extend the claims manifest to the command blocks and gap-status claims no stamp 
 
 | ID | Title | Status |
 |----|-------|--------|
-| — | Stories to be stubbed after Phase 14 checkpoints. Inputs: CER-046 (the unstamped command blocks outside the stamped sections), CER-048, CER-049, CER-051, CER-056 (gap-status claims outside the manifest). | — |
+| — | Stories to be stubbed after Phase 14 checkpoints. Inputs: CER-046 (the unstamped command blocks outside the stamped sections), CER-048 (the systemd units' EnvironmentFile line), CER-049 (the GAP-013 fix's `-o` reconciliation), CER-051 (U+200B in copy-paste blocks), CER-056 (gap-status claims outside the manifest), CER-058 (whether forqsite's admin install page is a GAP entry), CER-059 (the HTTPS-specifier pack pin on the Provider lifecycle route). | — |
 
 ## Schema delivery
 
