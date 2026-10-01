@@ -2,7 +2,7 @@
 id: CONTENT-040
 rail: CONTENT
 title: Close GAP-006 at cp-PM105-main
-status: planned
+status: complete
 phase: "14"
 story_class: content
 auth_gated: false
