@@ -17,3 +17,7 @@
 # Deploy target configuration (ssh alias / remote directory) — operator-local, never
 # tracked (INFRA-006).
 scripts/deploy.env
+
+# release.sh's full stale-claims report (INFRA-021) — local only: forqsite commit
+# subjects can name a deployment.
+/.release-report.txt

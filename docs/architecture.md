@@ -66,7 +66,9 @@ forqsite.help/
 │   ├── stale-claims.py     # release-time stale-claim checker (reports, never edits) — see Stale-claim checker below
 │   ├── stale-claims-selftest.sh  # fixture selftest for stale-claims.py
 │   ├── restamp.py          # pins a new release commit in the manifest and both bundles — see Restamp below
-│   └── restamp-selftest.sh # fixture selftest for restamp.py
+│   ├── restamp-selftest.sh # fixture selftest for restamp.py
+│   ├── release.sh          # the attended release job: check, restamp, commit, tag, deploy, drift-check, push — see Release job below
+│   └── release-selftest.sh # fixture selftest for release.sh
 ├── docs/
 │   └── claims-manifest.json  # every stamped claim both pages make about forqsite, and where its evidence lives
 └── README.md
@@ -170,6 +172,31 @@ commit. That is weaker than Phase 12's hand verification, and the meaning is rev
 after two releases. Its usage, refusals and exit codes live in its own header docstring,
 per the exit-code contract below; `scripts/restamp-selftest.sh` exercises each refusal and
 a clean restamp against fixture repositories.
+
+**Release job** (INFRA-021, Phase 14). `scripts/release.sh <target>` (or
+`--latest-checkpoint`, the newest `cp-PM<n>-main` tag in the clone by version sort) is the
+attended release, run by hand on the operator's host. It is a dry run unless given `--yes`.
+It refuses, writing nothing, unless the tree is clean on `main`, the deploy configuration
+is present, and this repository is not behind origin. Origin's state is read from origin
+itself with `git ls-remote` on every run, never from the remote-tracking ref, and the job
+never fetches. A branch ahead of origin is released, after the commits the push will
+carry are listed by subject. Then it runs the selftests and `stale-claims.py
+--no-commits`. When a claim is stale, it writes the full report to a gitignored local file,
+prints the paste-safe summary, and stops for a review story. When none is, it runs
+`restamp.py`, runs the selftests again, commits exactly the manifest and both bundles under
+a fixed message (the claim counts and the IDs of claims that hold, never a forqsite commit
+subject), tags the commit `rel-<forqsite short sha>` (annotated, so `restamp.py`'s
+newest-release lookup sorts reliably), deploys that tag, and drift-checks it. It never
+pushes a release that has not deployed and passed the drift check: the push of `main` and
+the tag, one atomic push, is the last step. It never rolls back on its own: after a drift
+failure it stops unpushed and prints the ready-to-paste `deploy.sh --rollback <stamp>`
+command, which stays the operator's call. Every stop after the commit prints its own
+recovery commands, and a local `rel-` tag that origin lacks makes the next run refuse until
+the operator finishes or abandons that release. Any scheduler is operator-local and
+untracked, and is enabled only after one attended release. Its usage, refusals, exit codes
+and invariants live in its own header comment, per the exit-code contract below;
+`scripts/release-selftest.sh` proves every exit code against fixture repositories, a stub
+`ssh` and a local server.
 
 **Deploy, drift-check and provenance scripts** (INFRA-006, INFRA-007, INFRA-008, Phase 11).
 Three scripts, each documented in full in its own header comment — this section points at

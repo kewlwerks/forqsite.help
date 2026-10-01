@@ -11,6 +11,8 @@ Before `checkpoint-tag`, run `scripts/drift-check.sh` by hand and record its exi
 
 Never `mv` a backup over a live file: the bind mount follows the inode, so the container would keep serving the old one. Nothing rolls back automatically; `release.sh` never does.
 
+A release (`scripts/release.sh`, INFRA-021) is not a checkpoint: a stopped release prints its own recovery steps, and a local `rel-` tag that origin lacks makes the next run refuse until that release is finished or abandoned.
+
 ---
 
 ## cp1-bootstrap-complete

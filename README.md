@@ -72,6 +72,16 @@ claim or any other check fails. It never commits, tags or deploys.
 FORQSITE_CLONE=<path to your forqsite clone> python3 scripts/restamp.py [--dry-run] [--date YYYY-MM-DD] <commit-ish>
 ```
 
+`scripts/release.sh` runs a whole release by hand: it checks the claims, and when none is
+stale it restamps, commits, tags `rel-<forqsite short sha>`, deploys, drift-checks and only
+then pushes; when one is stale it stops with a local report to review as a story. It is a
+dry run unless given `--yes`, and every stop prints its own recovery steps.
+
+```sh
+FORQSITE_CLONE=<path to your forqsite clone> scripts/release.sh --latest-checkpoint
+FORQSITE_CLONE=<path to your forqsite clone> scripts/release.sh --yes --latest-checkpoint
+```
+
 ### Editing the bundles
 
 `index.html` and `gap-handoff.html` are **self-extracting bundles**, not hand-written
