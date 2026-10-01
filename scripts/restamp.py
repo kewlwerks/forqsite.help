@@ -54,8 +54,9 @@ written until every check has passed):
          a creation time; the newest is not rel-<release.commit[:8]>; or that tag's commit
          lacks either page
     3    stale-claims.py --no-commits exits 3 at the target; its report is printed
-    5    a git call, the checker (any exit other than 0 or 3), bundle-template.py or a file
-         write failed unexpectedly
+    5    a git call, the checker (any exit other than 0 or 3) or bundle-template.py failed
+         unexpectedly; any filesystem step of the write phase failed; or any other
+         unexpected exception (the top-level guard)
     8    the manifest is inconsistent: a stamp record, the results derivation or the
          Known-gaps assertion
     0    restamped (with --dry-run: it would restamp)
@@ -85,6 +86,13 @@ Invariants (what the proving pass should attack):
                                --date in the same form (ISO, or the long form
                                "3 february 2026": unpadded day, lowercase English month
                                from a fixed table, never the locale's strftime).
+                               A stamp date is matched as a whole token, with no digit
+                               immediately before or after it, both when counted and
+                               when replaced (never str.count or str.replace): so
+                               "1 january 2026" is not found inside "11 january 2026",
+                               nor "2026-01-10" inside "12026-01-10", and such a stamp
+                               is refused (exit 8) rather than rewritten into a date
+                               the manifest does not record.
 
   Results, derived against the pages at the previous-release tag (never HEAD):
     unverified  kept as it is; its note must start UNVERIFIED:
@@ -109,8 +117,16 @@ Invariants (what the proving pass should attack):
     temporary directory outside the repository: copied, injected, verified, and
     re-extracted and compared with the intended template. Only then, unless --dry-run,
     are the two bundles written, then the manifest last. Each file is written to a
-    temporary sibling and renamed over the original, so each file is either wholly old
-    or wholly new. The temporary directory is removed on every path.
+    temporary sibling (mkstemp, write, fsync, copymode) and renamed over the original,
+    so each file is either wholly old or wholly new. Every one of those steps sits inside
+    one handler: a failure removes the sibling if it was created and exits 5 naming the
+    file by basename, with the recovery below. The temporary directory is removed on
+    every path.
+
+  No traceback and no path, ever. main() runs everything inside a top-level guard: the
+    tool's own failures exit with their codes, and any other exception exits 5 with a
+    fixed message naming only the exception's class, never its text, which can carry a
+    path. A write failure is always reported by the write handler, never by this guard.
 
   Why it never leaves a half-restamped tree. Nothing is written until nothing can still
     refuse, and the staged bundles have already been proven to inject and verify, so no
@@ -175,6 +191,8 @@ BUNDLE_TOOL = os.path.join(SCRIPT_DIR, 'bundle-template.py')
 CHECKER = os.path.join(SCRIPT_DIR, 'stale-claims.py')
 
 CLONE_NAME = 'the clone named by FORQSITE_CLONE'
+RECOVERY = ('The tree had no tracked changes before this run, so `git checkout -- .` '
+            'restores it.')
 USAGE = ('usage: FORQSITE_CLONE=<path to a forqsite clone> '
          'restamp.py [--dry-run] [--date YYYY-MM-DD] <target>')
 
@@ -199,6 +217,13 @@ def parse_date(text):
         return datetime.date.fromisoformat(text)
     except ValueError:
         return None
+
+
+def date_token(form):
+    """A date form as a whole token: no digit immediately before or after it, so
+    '1 january 2026' never matches inside '11 january 2026', nor '2026-01-10' inside
+    '12026-01-10'."""
+    return re.compile(r'(?<![0-9])' + re.escape(form) + r'(?![0-9])')
 
 
 def long_form(d):
@@ -506,18 +531,21 @@ def plan_stamps(manifest, slug, old8, new8, date):
                                       'exactly once')
         if sdate is None:
             raise Fail(EXIT_MANIFEST, f'stamp {sid} date is not a YYYY-MM-DD date')
-        iso_n, long_n = text.count(sdate.isoformat()), text.count(long_form(sdate))
+        iso_n = len(date_token(sdate.isoformat()).findall(text))
+        long_n = len(date_token(long_form(sdate)).findall(text))
         if (iso_n, long_n) == (1, 0):
             old_date, new_date = sdate.isoformat(), date.isoformat()
         elif (iso_n, long_n) == (0, 1):
             old_date, new_date = long_form(sdate), long_form(date)
         else:
             raise Fail(EXIT_MANIFEST, f'stamp {sid} text does not contain its date exactly '
-                                      'once in exactly one form (ISO or long)')
+                                      'once, as a whole token, in exactly one form (ISO or '
+                                      'long)')
         new_text = text.replace(old_ref, new_ref)
-        if new_text.count(old_date) != 1:
+        hits = list(date_token(old_date).finditer(new_text))
+        if len(hits) != 1:
             raise Fail(EXIT_MANIFEST, f'stamp {sid} date is not separable from its commit')
-        new_text = new_text.replace(old_date, new_date)
+        new_text = new_text[:hits[0].start()] + new_date + new_text[hits[0].end():]
         planned.append((st, text, new_text))
     for page in PAGES:
         by_text = {}
@@ -666,19 +694,22 @@ def check_known_gaps(manifest, kg):
 def replace_file(path, data):
     """Write data to a temporary sibling and rename it over path: the file is either
     wholly old or wholly new."""
-    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix='.restamp-')
+    tmp = None
     try:
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix='.restamp-')
         with os.fdopen(fd, 'wb') as f:
             f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
         shutil.copymode(path, tmp)
         os.replace(tmp, path)
     except OSError:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise Fail(EXIT_GIT, f'writing {os.path.basename(path)} failed; the tree was clean '
-                             'before this run, so `git checkout -- .` restores it')
+        if tmp is not None:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+        raise Fail(EXIT_GIT, f'writing {os.path.basename(path)} failed. {RECOVERY}')
 
 
 def run(dry_run, date, target_arg):
@@ -772,15 +803,22 @@ def run(dry_run, date, target_arg):
 
 
 def main(argv):
+    """The top-level guard: a Fail exits with its own code, SystemExit passes through,
+    and anything else exits 5 with a fixed message naming only the exception's class.
+    str() of an exception can carry a path, so it is never printed, and no traceback is."""
     try:
-        sys.stdout.reconfigure(errors='replace')
-    except AttributeError:
-        pass
-    dry_run, date, target = parse_args(argv)
-    try:
+        try:
+            sys.stdout.reconfigure(errors='replace')
+        except AttributeError:
+            pass
+        dry_run, date, target = parse_args(argv)
         return run(dry_run, date, target)
     except Fail as e:
         die(e.code, e.message)
+    except SystemExit:
+        raise
+    except BaseException as e:
+        die(EXIT_GIT, f'unexpected internal failure ({type(e).__name__}). {RECOVERY}')
 
 
 if __name__ == '__main__':

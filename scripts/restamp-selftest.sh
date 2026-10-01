@@ -35,7 +35,11 @@
 #   (c) refusals               each with its exit code and an unchanged git status and
 #                              sha256 of the three files: 6, 4, 3, 7, 8, 9, 2, 64;
 #                              the 9s include a staged bundle that fails to re-extract
-#                              to the intended template, the last check before writing
+#                              to the intended template, the last check before writing;
+#                              amended 2026-10-01: a stamp date that is only a substring
+#                              (11 january / 12026-01-10) exits 8; a read-only docs/
+#                              exits 5 from the write handler; the top-level guard maps
+#                              any other exception to 5 with no traceback and no path
 #   (d) hygiene                no fixture or work-directory path in any output; every git
 #                              subcommand run is read-only
 #
@@ -48,7 +52,7 @@ REPO_ROOT="$(git -C "$(dirname "${BASH_SOURCE[0]}")/.." rev-parse --show-topleve
 SRC_SCRIPTS="$REPO_ROOT/scripts"
 
 WORK_DIR="$(mktemp -d)"
-cleanup() { rm -rf "$WORK_DIR"; }
+cleanup() { chmod -R u+w "$WORK_DIR" 2>/dev/null || true; rm -rf "$WORK_DIR"; }
 trap cleanup EXIT
 
 FQ="$WORK_DIR/fixture-forqsite"
@@ -621,6 +625,75 @@ helper edit-template "$CASE" index.html '</body>' $'<p>a\r\nb</p></body>'
 ccommit "a CRLF in the template"
 refuse "a staged bundle that does not re-extract to the intended template" 9 "c staging" \
   clone --date 2026-02-03 "$T"
+
+# Amended 2026-10-01: a stamp date is a whole token, never a substring.
+fresh
+helper edit-template "$CASE" gap-handoff.html '10 january 2026' '11 january 2026'
+helper edit-manifest "$CASE" "st = m['stamps'][3]; st['text'] = st['text'].replace('10 january 2026', '11 january 2026'); st['date'] = '2026-01-01'"
+ccommit "a long-form date that is only a substring"
+refuse "a stamp dated 2026-01-01 whose text says 11 january 2026" 8 "c long substring" \
+  clone --date 2026-02-03 "$T"
+
+fresh
+helper edit-template "$CASE" index.html 'verified: 2026-01-10' 'verified: 12026-01-10'
+helper edit-manifest "$CASE" "st = m['stamps'][0]; st['text'] = st['text'].replace('verified: 2026-01-10', 'verified: 12026-01-10')"
+ccommit "an ISO date that is only a substring"
+refuse "an ISO stamp whose text says 12026-01-10" 8 "c iso substring" \
+  clone --date 2026-02-03 "$T"
+
+# Amended 2026-10-01: a write failure exits 5 from the write handler, with no traceback
+# and no path. docs/ is made read-only, so the manifest (written last) cannot be replaced.
+fresh
+chmod a-w "$CASE/docs"
+if (: > "$CASE/docs/.probe") 2>/dev/null; then
+  rm -f "$CASE/docs/.probe"
+  chmod u+w "$CASE/docs"
+  report "(c) a read-only docs/ makes a clean restamp exit 5 with the write handler's message" 1 \
+    "docs/ accepted a write for this user (running as root?), so the case cannot be proven"
+else
+  m_before="$(sha256sum < "$CASE/docs/claims-manifest.json")"
+  run_restamp "c read-only docs" clone --date 2026-02-03 "$T"
+  chmod u+w "$CASE/docs"
+  ok=0; detail=""
+  if [ "$STATUS" -ne 5 ]; then ok=1; detail="expected exit 5, got $STATUS: $(head -c 300 <<<"$OUT")"
+  elif grep -qF 'Traceback' <<<"$OUT"; then ok=1; detail="a traceback was printed"
+  elif grep -qF -- "$WORK_DIR" <<<"$OUT"; then ok=1; detail="a work-directory path was printed"
+  elif ! grep -qF 'claims-manifest.json' <<<"$OUT"; then ok=1; detail="message does not name claims-manifest.json: $OUT"
+  elif ! grep -qF 'git checkout -- .' <<<"$OUT"; then ok=1; detail="message lacks the recovery: $OUT"
+  elif grep -qF 'unexpected internal failure' <<<"$OUT"; then ok=1; detail="the top-level guard reported a write failure: $OUT"
+  elif [ "$(sha256sum < "$CASE/docs/claims-manifest.json")" != "$m_before" ]; then ok=1; detail="the manifest changed"
+  elif compgen -G "$CASE/docs/.restamp-*" > /dev/null; then ok=1; detail="a .restamp-* file was left in docs/"
+  fi
+  report "(c) a read-only docs/ makes a clean restamp exit 5 with the write handler's message" "$ok" "$detail"
+fi
+
+# Amended 2026-10-01: the top-level guard. run() is replaced by one raising an exception
+# whose text carries a work-directory path; main() must exit 5 without printing it.
+fresh
+set +e
+OUT="$(cd "$WORK_DIR" && env -u XDG_CONFIG_HOME HOME="$EMPTY_HOME" FORQSITE_CLONE="$FQ" \
+  python3 - "$CASE/scripts/restamp.py" "$WORK_DIR" 2>&1 <<'PYEOF'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location('restamp', sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+secret = sys.argv[2]
+def boom(*args, **kwargs):
+    raise RuntimeError(f'failed under {secret}/docs')
+mod.run = boom
+sys.exit(mod.main(['--date', '2026-02-03', 'HEAD']))
+PYEOF
+)"
+STATUS=$?
+set -e
+{ echo "--- c guard ---"; printf '%s\n' "$OUT"; } >> "$ALL_OUTPUT"
+ok=0; detail=""
+if [ "$STATUS" -ne 5 ]; then ok=1; detail="expected exit 5, got $STATUS: $(head -c 300 <<<"$OUT")"
+elif grep -qF 'Traceback' <<<"$OUT"; then ok=1; detail="a traceback was printed"
+elif grep -qF -- "$WORK_DIR" <<<"$OUT"; then ok=1; detail="the exception's path was printed"
+elif ! grep -qF 'unexpected internal failure (RuntimeError)' <<<"$OUT"; then ok=1; detail="got: $OUT"
+fi
+report "(c) the top-level guard maps an unexpected exception to exit 5 with no traceback or path" "$ok" "$detail"
 
 fresh
 refuse "FORQSITE_CLONE unset" 2 "c unset" unset --date 2026-02-03 "$T"
