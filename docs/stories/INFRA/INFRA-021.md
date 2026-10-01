@@ -2,7 +2,7 @@
 id: INFRA-021
 rail: INFRA
 title: release.sh: the attended release job
-status: planned
+status: complete
 phase: "14"
 story_class: code
 auth_gated: false
