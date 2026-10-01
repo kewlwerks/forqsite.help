@@ -32,7 +32,7 @@ the deployment either); no database
 ## Era and phase currency
 
 Current era: `001` — `docs/eras/001-initial.md`
-Current phase: 13 — Release-time reconciliation: revise the brief, then check claims against a new forqsite commit
+Current phase: 14 — Release from a forqsite checkpoint tag: harden, restamp, release
 
 `docs/phases/index.md` is the source of truth for phase status. The two lines above
 and below are pointers into that record, not a second copy of it.

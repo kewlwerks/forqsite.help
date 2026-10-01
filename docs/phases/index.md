@@ -27,7 +27,7 @@ Each phase has a dedicated file in `docs/phases/`.
 | 11 | Make the deploy repeatable, and make drift visible | complete | — | [phase-11.md](phase-11.md) |
 | 12 | One stamp per release: re-verify every published claim against one forqsite commit | complete | — | [phase-12.md](phase-12.md) |
 | 13 | Release-time reconciliation: revise the brief, then check claims against a new forqsite commit | complete | — | [phase-13.md](phase-13.md) |
-| 14 | Release from a forqsite checkpoint tag: harden, restamp, release | planned | — | [phase-14.md](phase-14.md) |
+| 14 | Release from a forqsite checkpoint tag: harden, restamp, release | complete | — | [phase-14.md](phase-14.md) |
 | 15 | Bring the unstamped command blocks under the claims manifest | planned | — | [phase-15.md](phase-15.md) |
 
 

@@ -322,4 +322,74 @@ result             ok — served bytes match the ref for all 2 bundles
 
 ---
 
+## cp-14
+
+**Phase:** 14 — Release from a forqsite checkpoint tag: harden, restamp, release
+**Tag command:** `git tag cp-14 && git push origin main --tags`
+
+**Release commit:** `nullvalues/forqsite@94f5c339c085869c390d92f567461185b03f1bea`
+(cp-PM105-main), pinned 2026-10-01 by the first attended release, `rel-94f5c339`.
+
+**Acceptance:** all 7 stories are complete.
+- **INFRA-017.** Deploy configuration is safe for unattended runs.
+- **INFRA-018.** `deploy.sh --rollback`, a truthful backups line, and an exact per-file prune
+  report.
+- **INFRA-019.** Checker hardening, plus the paste-safe `--no-commits` report.
+- **CONTENT-039.** Claims for the command blocks in stamped sections. The withdrawn `file:`
+  pack install is replaced on two routes.
+- **INFRA-020.** `restamp.py`.
+- **CONTENT-040.** GAP-006 is closed.
+- **INFRA-021.** `release.sh`.
+
+The phase was planned on 2026-09-30 from two independent planner drafts, one fable and one
+opus. The orchestrator verified both drafts and synthesized them, and the operator approved
+the result. At the operator's direction, INFRA-018, INFRA-020 and INFRA-021 each had an
+adversarial fable proving pass between build and review:
+- INFRA-018 had one MEDIUM defect: an empty or partial backup was restored and reported as
+  verified.
+- INFRA-020 had two MEDIUM defects: an uncaught write error leaked a path, and a substring
+  date match.
+- INFRA-021 was PROVEN, with no defects.
+
+Each MEDIUM defect was fixed under a spec amendment before review.
+
+**First release.** The steps ran in this order:
+1. The bootstrap tag `rel-1fda3228` was pushed with the operator's approval.
+2. The dry run matched the spec line for line.
+3. On the operator's go, `release.sh --yes cp-PM105-main` moved the pin from `1fda3228` to
+   `94f5c339`. The restamp reported 42 claims: 40 open, 1 changed. The job committed
+   `d4c3991` and tagged it, deployed and drift-checked it, then pushed main with the phase's
+   39 reviewed commits.
+
+After the release, the checker reports 42 untouched claims and 1 closed record, 0 reopened.
+
+**Gates:**
+- security PASS (opus). Two LOW findings: CER-063, already filed, and CER-064, newly filed.
+- intent ALIGNED.
+- docs FAIL, then PASS after remediation commit `5211a51`. The remediation:
+  - made the restamp paragraph past tense;
+  - listed every script in the Module structure tree;
+  - described the gap list by class instead of a stale range;
+  - updated the phase-15 inputs;
+  - filled in the CP-14 checklist.
+- dark-feature-scan PASS.
+
+**Filed this phase:** CER-056 to CER-064. CER-063 was found by the release itself:
+`deploy.sh --ref` records an annotated tag's object sha (`60fd0cf`) as provenance, not its
+commit (`d4c3991`).
+
+**Drift check, before the tag.** The pages are byte-identical to release commit `d4c3991`.
+The check ran at the tag candidate and exited 0:
+
+```
+ref                fa6af3805c506fe075188defdb85020e0b32b18a  fa6af38 "cer: file CER-064 (release.sh inherits non-redirecting GIT_* env) from the CP-14 security audit"
+index.html          ok  13555187d07f41a16214acd3323ddf65d4bdf4cb38454b10c396e451fc083134
+gap-handoff.html    ok  78c943e5aa8d48c72deec3d15418cd2354bba58eae0608971dc03acced7ee57d
+nginx.conf          not served — bind-mounted only; no request returns its bytes, so this check cannot cover it
+provenance         claims 60fd0cf deployed 2026-10-01T23:16:52Z  (claim, not the basis of the result above)
+result             ok — served bytes match the ref for all 2 bundles
+```
+
+---
+
 _(Add a checkpoint section for each phase. Tag only after full checkpoint sequence passes.)_
