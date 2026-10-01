@@ -1,72 +1,72 @@
 {
   "release": {
     "repo": "nullvalues/forqsite",
-    "commit": "1fda3228322d5ad779f44c321c4013ccd247b3fa",
-    "committed": "2026-09-24",
-    "pinned": "2026-09-24"
+    "commit": "94f5c339c085869c390d92f567461185b03f1bea",
+    "committed": "2026-09-25",
+    "pinned": "2026-10-01"
   },
   "stamps": [
     {
       "id": "S-01",
       "page": "index.html",
       "location": "Sidebar, under the \"Known gaps →\" link (every route)",
-      "text": "repo: nullvalues/forqsite@1fda3228<br>verified: 2026-09-24",
-      "commit": "1fda3228",
-      "date": "2026-09-24",
+      "text": "repo: nullvalues/forqsite@94f5c339<br>verified: 2026-10-01",
+      "commit": "94f5c339",
+      "date": "2026-10-01",
       "scope": "The Known gaps callout: the claim that the linked gaps list (gap-handoff.html) is current at this commit."
     },
     {
       "id": "S-02",
       "page": "index.html",
       "location": "Operations (Day-two runbook) route, footer of the \"Upgrade\" section",
-      "text": "verified 2026-09-24 against nullvalues/forqsite@1fda3228",
-      "commit": "1fda3228",
-      "date": "2026-09-24",
+      "text": "verified 2026-10-01 against nullvalues/forqsite@94f5c339",
+      "commit": "94f5c339",
+      "date": "2026-10-01",
       "scope": "Section footer: the \"Upgrade\" section, back to its h2 heading. Reading taken: the callout above that heading (a pointer to the Backup & recovery route) is navigation, not a claim, and is not covered."
     },
     {
       "id": "S-03",
       "page": "index.html",
       "location": "Operations (Day-two runbook) route, footer of the \"Provider packs (condensed)\" section",
-      "text": "verified 2026-09-24 against nullvalues/forqsite@1fda3228",
-      "commit": "1fda3228",
-      "date": "2026-09-24",
+      "text": "verified 2026-10-01 against nullvalues/forqsite@94f5c339",
+      "commit": "94f5c339",
+      "date": "2026-10-01",
       "scope": "Section footer: the \"Provider packs (condensed)\" section, back to its h2 heading (the previous stamp closes the Upgrade section)."
     },
     {
       "id": "S-04",
       "page": "index.html",
       "location": "Promoting a change route, footer of the page (after \"Which collapses are safe\")",
-      "text": "verified 2026-09-24 against nullvalues/forqsite@1fda3228",
-      "commit": "1fda3228",
-      "date": "2026-09-24",
+      "text": "verified 2026-10-01 against nullvalues/forqsite@94f5c339",
+      "commit": "94f5c339",
+      "date": "2026-10-01",
       "scope": "Reading taken: a page footer covering the whole Promoting a change route, not only its last h2 section. It is the only stamp on that route, it sits after the closing paragraph with extra spacing, and the page is one argument whose forqsite facts sit in its earlier sections. Advice to the operator (which environments to collapse) is not a forqsite claim and is not listed."
     },
     {
       "id": "S-05",
       "page": "gap-handoff.html",
       "location": "Intro, third paragraph (the ordering assumption), inline",
-      "text": "Verified 2026-09-24 against <span style=\"font-family:'Geist Mono',monospace; font-size:13px;\">nullvalues/forqsite@1fda3228</span>",
-      "commit": "1fda3228",
-      "date": "2026-09-24",
+      "text": "Verified 2026-10-01 against <span style=\"font-family:'Geist Mono',monospace; font-size:13px;\">nullvalues/forqsite@94f5c339</span>",
+      "commit": "94f5c339",
+      "date": "2026-10-01",
       "scope": "Inline stamp: its own paragraph, the ordering assumption that production stays non-docker. Reading taken: it does not extend to the TL;DR ordering below it or to the GAP entries, which the footer stamp covers."
     },
     {
       "id": "S-06",
       "page": "gap-handoff.html",
       "location": "GAP-012 entry, last row of the EVIDENCE table",
-      "text": "['nullvalues/forqsite@1fda3228', 'every line above checked at this commit on 2026-09-24']",
-      "commit": "1fda3228",
-      "date": "2026-09-24",
+      "text": "['nullvalues/forqsite@94f5c339', 'every line above checked at this commit on 2026-10-01']",
+      "commit": "94f5c339",
+      "date": "2026-10-01",
       "scope": "Table-row stamp: the five GAP-012 evidence rows above it. The GAP-012 entry as a whole (its problem statement) is a GAP entry and is covered by the footer stamp."
     },
     {
       "id": "S-07",
       "page": "gap-handoff.html",
       "location": "Page footer, below the last GAP entry",
-      "text": "forqsite known gaps · verified against nullvalues/forqsite@1fda3228 · 24 september 2026",
-      "commit": "1fda3228",
-      "date": "2026-09-24",
+      "text": "forqsite known gaps · verified against nullvalues/forqsite@94f5c339 · 1 october 2026",
+      "commit": "94f5c339",
+      "date": "2026-10-01",
       "scope": "Page footer: every GAP entry on the page, one claim per entry for its problem statement and evidence rows, except the GAP-012 evidence rows, which carry their own table-row stamp."
     }
   ],
@@ -291,7 +291,7 @@
         }
       ],
       "stamp": "S-02",
-      "result": "changed",
+      "result": "open",
       "absent": [
         {
           "path": "package.json",
@@ -304,8 +304,7 @@
           "suffix": ".sql",
           "n": 100
         }
-      ],
-      "note": "CHANGED: the paragraph said \"95 forward .sql files under src/db/migrations\"; at the release commit that directory holds 100 .sql files, one per journal entry (the last tagged 0099_retire_backup_corr048_paragraph_content), so it now says \"100 forward .sql files\"."
+      ]
     },
     {
       "id": "C-003",
@@ -383,8 +382,7 @@
         }
       ],
       "stamp": "S-02",
-      "result": "changed",
-      "note": "CHANGED: the paragraph said prestart \"runs a migration check that prints a [WARN] line and then always exits 0\" and pointed at \"grep check-migrations\"; prestart now also runs scripts/check-migration-hashes.ts --advisory, which reports a journal migration with no applied-ledger record as an unrecorded finding and still exits 0. The paragraph now says prestart \"runs two migration checks, and both always exit 0\", describes the ledger check's unrecorded finding, and greps for \"check-migration\", which matches both checks' log lines. The table check's blind spot for column-adding migrations is unchanged."
+      "result": "open"
     },
     {
       "id": "C-005",
@@ -821,7 +819,7 @@
         }
       ],
       "stamp": "S-07",
-      "result": "changed",
+      "result": "open",
       "absent": [
         {
           "path": "package.json",
@@ -833,8 +831,7 @@
         {
           "path": "ecosystem.config.js"
         }
-      ],
-      "note": "CHANGED: the runbook evidence row said \"§7/§12 reference pm2\"; the runbook has one pm2 reference, in §12 (Upgrading forqsite), and none in §7, so the row now says \"§12 references pm2\"."
+      ]
     },
     {
       "id": "C-024",
@@ -928,8 +925,7 @@
         }
       ],
       "stamp": "S-07",
-      "result": "changed",
-      "note": "CHANGED: the Caddyfile.example evidence row quoted \"reverse_proxy forqsite_a:3000 forqsite_b:3000\"; the file's line is \"reverse_proxy * forqsite_a:3000 forqsite_b:3000 {\", and the row now quotes \"reverse_proxy * forqsite_a:3000 forqsite_b:3000\"."
+      "result": "open"
     },
     {
       "id": "C-027",
@@ -1130,7 +1126,7 @@
         }
       ],
       "stamp": "S-07",
-      "result": "changed",
+      "result": "open",
       "absent": [
         {
           "path": "scripts/restore.sh",
@@ -1140,8 +1136,7 @@
       "closed_by": {
         "commit": "1ab2405c377ef23b44238aecb2ff80d7f5f444da",
         "path": "scripts/restore.sh"
-      },
-      "note": "CHANGED: the entry said both backup.sh and restore.sh run set +x and then set -x; restore.sh now runs set +x three times and never set -x, so the restore.sh half is closed and the entry is narrowed to backup.sh. Title \"Fix set -x re-enable in backup/restore scripts\" became \"Fix set -x re-enable in backup.sh\"; problem \"Both scripts run set +x around credential-bearing commands, then set -x\" became \"backup.sh runs set +x around its credential-bearing pg_dump, then set -x\"; the restore.sh evidence row \"same pattern around psql\" now says restore.sh is no longer affected; done-when and the index ledger summary name backup.sh only."
+      }
     },
     {
       "id": "C-036",
@@ -1188,7 +1183,7 @@
         }
       ],
       "stamp": "S-07",
-      "result": "changed",
+      "result": "open",
       "absent": [
         {
           "path": "docs/configuration.md",
@@ -1202,8 +1197,7 @@
           "path": "docs/configuration.md",
           "symbol": "REQUIRE_PACK_SIGNATURES"
         }
-      ],
-      "note": "CHANGED: the first-run.md evidence row quoted \"apt-get install postgresql-18-pgvector\"; the file has \"sudo apt-get install -y postgresql-18-pgvector\", and the row now quotes it exactly."
+      ]
     },
     {
       "id": "C-037",
@@ -1242,8 +1236,7 @@
         }
       ],
       "stamp": "S-07",
-      "result": "added",
-      "note": "ADDED: verified at the release commit on 2026-09-25 by running the runbook's line against .env.local.example, which yields four lines; the footer stamp's printed date, 24 september 2026, is the earlier verification of the entries it already covered."
+      "result": "open"
     },
     {
       "id": "C-038",
@@ -1274,8 +1267,7 @@
         }
       ],
       "stamp": "S-07",
-      "result": "added",
-      "note": "ADDED: verified at the release commit on 2026-09-25 by running backup.sh and restore.sh against stub pg_dump and psql binaries that record their arguments; every call received the password. pg_dump and psql were not run against a server. The footer stamp's printed date, 24 september 2026, is the earlier verification of the entries it already covered."
+      "result": "open"
     },
     {
       "id": "C-039",
