@@ -57,10 +57,29 @@ Phase 14 plan: approved by the operator on 2026-09-30, synthesized from two inde
 Also (operator ruling 2026-10-01): `rel-<sha>` tags are annotated, so the "newest release tag"
 lookup in `restamp.py` (INFRA-020) sorts reliably.
 
+**Operator rulings on the spec's open questions (2026-10-01)**
+- **Accepted as specced:**
+  - the `git ls-remote` precondition on every run, dry runs included;
+  - restamp's summary line in the commit body;
+  - writing the stale-path report file even in a dry run;
+  - running the selftests twice, once as a precondition and once after the restamp.
+- **Changed: ahead of origin.** When local `main` is ahead of origin, the release is
+  allowed. Before any write, and in dry runs too, the job lists the unpushed commits that the
+  push will carry, by subject. These are subjects from this repository, which may be printed
+  (Instruction 2a).
+- **Changed: rollback after a drift failure.** After exit 16, the job prints the full
+  ready-to-paste `scripts/deploy.sh --rollback <stamp>` command along with the stamp. It
+  still never runs that command (Instruction 6).
+
 **Spec-time design (2026-10-01).** A throwaway prototype of `release.sh` and its selftest
-was built against main `238bdb3` plus a stand-in `restamp.py` that implements INFRA-020's
-specced CLI and exit codes. Every case below and every listed mutation behaved as stated. The
-prototype is not committed. It settled five points that the stub left open.
+was built against main, together with a stand-in `restamp.py` that implements INFRA-020's
+specced CLI and exit codes.
+- **First run, at `238bdb3`.** Every case and mutation listed below behaved as stated.
+- **Revised after the rulings, at `ed83c8e`.** INFRA-018 is merged there, and the run used
+  the real merged `deploy.sh`. The selftest passed 112 cases, and the printed
+  `--rollback` command was itself run in the fixture and restored the previous files.
+
+The prototype is not committed. It settled five points that the stub left open.
 - **"Not behind origin" is read from origin itself, without fetching.** It uses
   `git ls-remote`, which downloads no objects and writes no refs. The remote-tracking ref is
   only as fresh as the operator's last fetch. If it were trusted, an origin that had moved on
@@ -83,13 +102,17 @@ prototype is not committed. It settled five points that the stub left open.
 ## Requires
 
 - INFRA-019 is merged: `stale-claims.py --no-commits` and its exit codes (0, 2, 3, 4, 5, 64).
-- INFRA-018 is merged. This story only calls `deploy.sh --ref` and `deploy.sh --dry-run`, and
-  reads the `stamp` line of its success block. It never calls `--rollback`.
+- INFRA-018 is merged, as of main `ed83c8e`. This story calls only `deploy.sh --ref` and
+  `deploy.sh --dry-run`. It reads two lines of the deploy's success block: `stamp` and
+  `backups`. That block names only the backups the far side confirmed. The story prints a
+  `--rollback` command but never runs it. `deploy.sh` refuses a repeated option with 64, and
+  `release.sh` passes each option once.
 - INFRA-020 is merged. `scripts/restamp.py` exists with its specced CLI: `--dry-run`, one
   target, and exit codes 0, 2, 3, 4, 5, 6, 7, 8, 9 and 64. It writes nothing on any non-zero
   exit. The selftest copies the real `restamp.py`.
 - The pre-story commit for the Tests block is main
-  `238bdb3dde01465380354a3c286ed08fd684a722`.
+  `ed83c8e8b5b063a0518d2f917b7a32f9b908837d`. It was re-pinned on 2026-10-01, after
+  INFRA-018 merged.
 - The bootstrap tag `rel-1fda3228` is not needed to build or test this story. The first real
   run (CONTENT-040's post-merge release) needs it on origin.
 
@@ -100,6 +123,10 @@ prototype is not committed. It settled five points that the stub left open.
 - the stale path exits 3, writing only the gitignored report;
 - the clean path commits, tags, deploys and drift-checks, then pushes;
 - every stop after the commit leaves the push undone and prints its exact recovery commands.
+  After a drift failure, these include a ready-to-paste `deploy.sh --rollback <stamp>`,
+  which the job never runs;
+- a branch that is ahead of origin is released, after the unpushed commits are listed by
+  subject before any write.
 
 `scripts/release-selftest.sh` proves every exit code against fixtures, and the Tests block
 below prints `docs ok` and `ALL-OK`.
@@ -135,7 +162,7 @@ below prints `docs ok` and `ALL-OK`.
    | 6 | tracked changes: `git status --porcelain --untracked-files=no` is non-empty. Untracked files do not block. |
    | 2 | `deploy.sh --dry-run --ref HEAD` exits 2, or `FORQSITE_HELP_SITE_URL` resolves empty. Resolve it as drift-check does: the environment wins, then `scripts/deploy.env` through `read-deploy-env.sh`. Any other non-zero from the dry run exits 5. |
    | 5 | `git ls-remote origin refs/heads/main 'refs/tags/rel-*'` fails, or lists no `main` |
-   | 8 | behind origin. origin's `main` is not a local commit, or is not an ancestor of `HEAD`; or origin has a `rel-` tag that is missing locally or differs. Name the remedy (fetch and merge by hand), and never fetch. |
+   | 8 | behind origin. origin's `main` is not a local commit, or is not an ancestor of `HEAD`; or origin has a `rel-` tag that is missing locally or differs. Name the remedy (fetch and merge by hand), and never fetch. When the branch is ahead instead, print the listing in 2a and continue. |
    | 10 | unfinished release. The newest local tag matching `^rel-[0-9a-f]{8}$` (by `--sort=-creatordate`) is not on origin at the same object. Print the step 6 recovery for that tag when its commit is `HEAD`. |
    | 4 | `--latest-checkpoint` finds no clone tag matching `^cp-PM[0-9]+-main$`, or the target does not resolve in the clone |
    | 0 / 10 | `release.commit` equals the target sha. If the local `rel-<t8>` exists, print `already released` and exit 0, touching nothing. Otherwise exit 10. If the target differs but `rel-<t8>` already exists locally or on origin, exit 10. |
@@ -158,6 +185,19 @@ below prints `docs ok` and `ALL-OK`.
      and prints `release: target <name> (<sha8>)`. An explicit target prints the same line.
    - **What is never printed:** the clone path, this repository's absolute path, the alias,
      the directory and the URL.
+
+   2a. **Ahead of origin (operator ruling 2026-10-01).** Let `R` be origin's `main` as
+   `ls-remote` reported it. When `git rev-list --count R..HEAD` is N > 0, print this to stdout
+   straight after the code-8 check, before any write, in dry runs and with `--yes` alike:
+   ```
+   release: main is <N> commit(s) ahead of origin; the push will also carry:
+   release:   <sha8> <subject>
+   ```
+   - There is one `release:   <sha8> <subject>` line per commit, oldest first, from
+     `git log --reverse --format='%H %s' R..HEAD`, with `%H` cut to 8 characters.
+   - Then the run continues. These are this repository's own subjects, which may be printed.
+   - When N is 0, print nothing.
+   - The release commit is not listed, because it does not exist yet.
 
 3. **The clean path** (checker exit 0).
    - **Dry run.** Run `restamp.py --dry-run <sha>` and print its line. Print
@@ -221,8 +261,19 @@ below prints `docs ok` and `ALL-OK`.
 
        The reset precedes the redeploy because `deploy.sh` refuses bundles that differ from
        its ref.
-     - After 16, also print `this deploy's backup set is stamp <S>` when the stamp was read.
-       Never run `--rollback`.
+     - **After 16, the rollback command (operator ruling 2026-10-01).** `S` is the value of
+       the deploy's `stamp` line. When S was read, print these three lines after the abandon
+       block:
+       ```
+       release: or, to restore the files this deploy replaced (backup set <S>), instead of the redeploy:
+       release:   scripts/deploy.sh --rollback <S>
+       release:   scripts/drift-check.sh
+       ```
+       - **Incomplete set.** If the deploy's `backups` line does not name all three of
+         `index.html.bak-<S>`, `gap-handoff.html.bak-<S>` and `site-provenance.json.bak-<S>`,
+         add one line saying that this set has no backup of the first missing file, so
+         `deploy.sh --rollback` will refuse it (exit 6) and the abandon steps apply.
+       - **Never run `--rollback`.** Printing the command is the whole of this step.
    - **After 17 (deployed and drift-checked).** Print `to finish it:`, then
      `git push --atomic origin main rel-<t8>`. Add one line: if origin has moved, resolve it
      by hand.
@@ -296,12 +347,28 @@ below prints `docs ok` and `ALL-OK`.
        - the served `index.html` equals `HEAD`'s, and the served `gap-handoff.html` names
          `<T1_8>`;
        - the untracked file is untouched;
-       - no `fetch` or `pull` appears in the git log.
+       - no `fetch` or `pull` appears in the git log;
+       - no `ahead of origin` line is printed, because the branch is level with origin.
      - **NOOP.** In the same repo, run `--yes <T1>` again. Expect exit 0, `already released`,
        and nothing touched.
      - **LATEST.** In the same repo, run `--yes --latest-checkpoint`. Expect exit 0,
        `target cp-PM10-main (<T2_8>)`, `rel-<T2_8>` on origin, and `holds: none`. This also
        proves that restamp took `rel-<T1_8>` as the previous release.
+     - **AHEAD.** In a fresh case, make two unpushed local commits, `local work one` and then
+       `local work two`.
+       - **Dry run.** Run `<T1>` with no flag. Expect exit 0, nothing touched, and output
+         containing exactly this three-line block:
+         ```
+         release: main is 2 commit(s) ahead of origin; the push will also carry:
+         release:   <sha8 of one> local work one
+         release:   <sha8 of two> local work two
+         ```
+       - **With `--yes`.** Run `--yes <T1>`. Expect exit 0, the same block printed before the
+         `restamp:` line, and origin's `main^` equal to the second local commit.
+       - **The match.** Compare the whole block with a bash `[[ $OUT == *"$want"* ]]`, never
+         with `grep -F` on a multi-line pattern. `grep -F` reads each line of the pattern as a
+         separate alternative, so the order would go unchecked. The prototype's first version
+         of this check passed vacuously for exactly that reason.
      - **DRYRUN.** Run `<T1>`. Expect exit 0, the would-commit subject, nothing touched and
        no report.
      - **STALE.** Run `--yes <S>`, and again with no flag. Expect exit 3, and:
@@ -311,13 +378,22 @@ below prints `docs ok` and `ALL-OK`.
        - `git check-ignore` accepts the report;
        - stdout names `.release-report.txt`;
        - nothing touched.
-     - **DRIFT.** Override the served `index.html`, then run `--yes <T1>`. Expect exit 16, and:
+     - **DRIFT.** Seed the target with a live copy of all three files (fixed "previous"
+       bytes). Override the served `index.html`, then run `--yes <T1>`. Expect exit 16, and:
        - origin unchanged, and no `push` in the git log;
-       - the sidecar deployed;
        - a local annotated tag;
-       - the finish and abandon lines, with `<PRE>`.
+       - the finish and abandon lines, with `<PRE>`;
+       - the exact line `release:   scripts/deploy.sh --rollback <S>`, where S is the deploy's
+         own `stamp` line in the same output;
+       - no incomplete-set line;
+       - the target still holds the release bytes, because `release.sh` did not roll back.
 
-       Then re-run with the override removed. Expect exit 10, and nothing touched.
+       Then:
+       - Re-run with the override removed. Expect exit 10, and nothing touched.
+       - Run the printed `scripts/deploy.sh --rollback <S>` in the case repo. Expect exit 0,
+         and the live `index.html` holds the seeded previous bytes again.
+       - In a fresh case with an empty target, a drift failure still prints the
+         `--rollback` command, together with the incomplete-set line.
      - **DEPLOY.** With the stub ssh refusing, expect exit 15, origin unchanged, and the
        `git tag -d` line printed.
      - **PUSH.** With a rejecting `pre-receive` hook in origin, expect exit 17, origin
@@ -334,7 +410,7 @@ below prints `docs ok` and `ALL-OK`.
        - 4 for an unknown sha, and for a clone with no `cp-PM` tags;
        - 9 for `FIXTURE_SELFTEST_FAIL=pre`;
        - 10 for a local `rel-ffffffff` that origin lacks;
-       - 11 for a committed bundle with one `/` unescaped, which restamp's verify
+       - 11 for a committed bundle with one `\u002F` replaced by a literal `/`, which restamp's verify
          refuses.
 
        Three more cases check the state by hand:
@@ -368,6 +444,9 @@ go red, and each went red on the prototype.
 - Skipping the selftests after the restamp.
 - `git add -A`.
 - Exit 0 on checker exit 3.
+- Skipping the ahead listing (AHEAD).
+- Listing ahead commits newest first, without `--reverse` (AHEAD).
+- Omitting the `--rollback <S>` line after exit 16 (DRIFT).
 
 **Length.** This spec runs well past the ~36-line baseline. The job commits, tags, deploys
 and pushes, and every stop is a state the operator must be able to read. Each code and each
@@ -385,25 +464,27 @@ names, all intentional:
 
 Run from the repo root at the story's tip. No forqsite clone is needed, and no real host is
 contacted, because every remote in the selftest is local. The block was run against main
-`238bdb3`, where every new check failed: there is no `release-selftest.sh` or `release.sh`,
-the report is not ignored, and the docs assertion failed. It was also run against the
-prototype copy, where it printed `docs ok` and `ALL-OK`.
+`ed83c8e` (re-pinned after INFRA-018 merged). Every new check failed there: there is no
+`release-selftest.sh` or `release.sh`, the report is not ignored, and the docs assertion
+failed. It was also run against the revised prototype copy, which uses the merged
+`deploy.sh`. There it printed `docs ok` and `ALL-OK`.
 
 ```bash
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
-PRE=238bdb3dde01465380354a3c286ed08fd684a722
+PRE=ed83c8e8b5b063a0518d2f917b7a32f9b908837d
 S=$(mktemp -d); trap 'rm -rf "${S:?}"' EXIT
 
 # 1. the new selftest is green and asserts every exit code; then every selftest
 bash scripts/release-selftest.sh > "$S/selftest.out" 2>&1 || true
 tail -1 "$S/selftest.out" | grep -qE '^release-selftest: [0-9]+ passed, 0 failed$'
-for tok in CLEAN NOOP LATEST DRYRUN STALE DRIFT DEPLOY PUSH REFUSE HYGIENE; do
+for tok in CLEAN NOOP LATEST AHEAD DRYRUN STALE DRIFT DEPLOY PUSH REFUSE HYGIENE; do
   grep -qE "^PASS: .* — INFRA-021/$tok\$" "$S/selftest.out" || { echo "FAIL: no passing INFRA-021/$tok case"; exit 1; }
 done
 for code in 0 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 64; do
   grep -qE "^PASS: [^—]*exit $code([^0-9][^—]*)? — INFRA-021/" "$S/selftest.out" || { echo "FAIL: no case asserts exit $code"; exit 1; }
 done
+grep -qE '^PASS: [^—]*rollback[^—]* — INFRA-021/DRIFT$' "$S/selftest.out" || { echo "FAIL: no passing rollback-command case"; exit 1; }
 for t in scripts/*-selftest.sh; do bash "$t" > /dev/null 2>&1 || { echo "FAIL: $t"; exit 1; }; done
 
 # 2. every exit code documented in the header, which --help prints
@@ -450,8 +531,9 @@ this check cannot be pinned to `PRE`.
 
 ## Out of scope
 
-- Rolling back, automatically or otherwise. On a drift failure the job stops unpushed, and
-  `deploy.sh --rollback` (INFRA-018) stays the operator's call.
+- Running a rollback. On a drift failure the job stops unpushed and prints the
+  `deploy.sh --rollback <stamp>` command (INFRA-018), but running it stays the operator's
+  call.
 - Resuming a stopped release (`--resume`). The printed commands are the resume path.
 - Fetching, merging or rebasing. A repository that is behind origin is refused.
 - A scheduler, timer or cron entry in the tree. Any scheduler is operator-local, untracked,
