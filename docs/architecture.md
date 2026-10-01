@@ -232,7 +232,7 @@ This section is the authoritative definition of `docs/claims-manifest.json`. The
 to CONTENT-032 and CONTENT-035 to CONTENT-037 specs are its history, and where they disagree
 this section says so below. It supersedes CONTENT-030 Instructions 7 ("Do not describe its
 schema there, because the file already shows it"), because that premise no longer holds: the
-file cannot show a field or value it has never contained (`closed`, `marker`, `unverified`,
+file cannot show a field or value it has never contained (`marker`, `unverified`,
 `UNVERIFIED:`), and it no longer contains `MISMATCH:`. Status is measured against the
 manifest's git history: `in use` occurs in the live manifest, `retired` is absent now but
 occurs in an earlier committed version, and `unexercised` has never been held by any
@@ -278,14 +278,14 @@ committed version.
 | `claims[].closed_by` | object | in use | CONTENT-031, CONTENT-036 | Appears on a live claim that is only partly closed. |
 | `claims[].closed_by.commit` | string | in use | CONTENT-031 | A full sha, an ancestor of `release.commit` and not an ancestor of the old stamp's commit. |
 | `claims[].closed_by.path` | string | in use | CONTENT-031 | A path the `closed_by` commit touches. |
-| `closed` | array | unexercised | CONTENT-031, CONTENT-036 | A closed gap's claims move out of `claims` into this array, and the gap is removed from both pages. No manifest has used it yet. |
-| `closed[].id` | string | unexercised | CONTENT-031 | The claim id. |
-| `closed[].gap` | string | unexercised | CONTENT-031 | The gap that was closed. |
-| `closed[].claim` | string | unexercised | CONTENT-031 | The claim in words. |
-| `closed[].closed_by` | object | unexercised | CONTENT-031 | The commit that closed the gap, as `{commit, path}`. |
-| `closed[].closed_by.commit` | string | unexercised | CONTENT-031 | The closing commit, a full sha. |
-| `closed[].closed_by.path` | string | unexercised | CONTENT-031 | A path the closing commit touches. |
-| `closed[].evidence` | array | unexercised | CONTENT-031 | The claim's evidence, as for `claims[].evidence`. |
+| `closed` | array | in use | CONTENT-031, CONTENT-036, CONTENT-040 | A closed gap's claims move out of `claims` into this array, and the gap is removed from both pages. |
+| `closed[].id` | string | in use | CONTENT-031 | The claim id. |
+| `closed[].gap` | string | in use | CONTENT-031 | The gap that was closed. |
+| `closed[].claim` | string | in use | CONTENT-031 | The claim in words. |
+| `closed[].closed_by` | object | in use | CONTENT-031 | The commit that closed the gap, as `{commit, path}`. |
+| `closed[].closed_by.commit` | string | in use | CONTENT-031 | The closing commit, a full sha. It is an ancestor of the `release.commit` the record is published with, and not an ancestor of the commit of the stamp the gap was listed under. A review story may merge the record while the pin still predates it, when the release that moves the pin is its post-merge step; until that release lands, the record holds only at the release target (CONTENT-040). |
+| `closed[].closed_by.path` | string | in use | CONTENT-031 | A path the closing commit touches. |
+| `closed[].evidence` | array | in use | CONTENT-031 | The claim's evidence, as for `claims[].evidence`. |
 
 ### Values
 

@@ -143,14 +143,6 @@
           "symbol": "until ! curl -sf http://localhost:3000/api/health > /dev/null 2>&1; do"
         },
         {
-          "path": "scripts/firstrun.sh",
-          "symbol": "val=$(grep \"^${var}=\" .env.local 2>/dev/null || true | cut -d= -f2-)"
-        },
-        {
-          "path": "scripts/firstrun.sh",
-          "symbol": "step \"7.5. Required variable check\""
-        },
-        {
           "path": "scripts/backup.sh",
           "symbol": "pg_dump \"${DATABASE_URL}\" | gzip > \"$DUMP_FILE\""
         },
@@ -806,7 +798,7 @@
           "symbol": "minio"
         }
       ],
-      "note": "The non-docker production premise is this page's own ordering assumption; no file in the forqsite repository designates production as non-docker. Re-checked at the release commit as \"forqsite's production documentation still treats Postgres and MinIO as network services and compose as a development convenience\". It holds: the first-run prerequisites and the runbook require Postgres and MinIO as network services reached over TCP/IP; the runbook's install and standard upgrade are pnpm build, pnpm start and a process-manager restart, not docker; architecture.md keeps single-instance installs the default and the rolling restart opt-in. The only docker production path is that opt-in rolling topology (docs/deployment/docker-compose.rolling.yml driven by scripts/rolling-restart.sh), which runs the application containers only, declares no Postgres or MinIO service, and cannot build because the repository has no Dockerfile. One discrepancy is recorded rather than hidden: the root docker-compose.yml calls itself \"forqsite single-instance deployment\", while no install or upgrade document routes an operator through it; \"compose as a dev convenience\" is the rescoping the gap list proposes, not forqsite's wording. The runbook's docker references are unchanged in count since the previous stamp's commit, so nothing moved toward docker and the gap ordering needs no re-sequencing."
+      "note": "The non-docker production premise is this page's own ordering assumption; no file in the forqsite repository designates production as non-docker. Re-checked at forqsite commit 1fda3228 as \"forqsite's production documentation still treats Postgres and MinIO as network services and compose as a development convenience\". It holds: the first-run prerequisites and the runbook require Postgres and MinIO as network services reached over TCP/IP; the runbook's install and standard upgrade are pnpm build, pnpm start and a process-manager restart, not docker; architecture.md keeps single-instance installs the default and the rolling restart opt-in. The only docker production path is that opt-in rolling topology (docs/deployment/docker-compose.rolling.yml driven by scripts/rolling-restart.sh), which runs the application containers only, declares no Postgres or MinIO service, and cannot build because the repository has no Dockerfile. One discrepancy is recorded rather than hidden: the root docker-compose.yml calls itself \"forqsite single-instance deployment\", while no install or upgrade document routes an operator through it; \"compose as a dev convenience\" is the rescoping the gap list proposes, not forqsite's wording. The runbook's docker references are unchanged in count between forqsite commits 17b78645 and 1fda3228, so nothing moved toward docker and the gap ordering needs no re-sequencing."
     },
     {
       "id": "C-023",
@@ -938,25 +930,6 @@
       "stamp": "S-07",
       "result": "changed",
       "note": "CHANGED: the Caddyfile.example evidence row quoted \"reverse_proxy forqsite_a:3000 forqsite_b:3000\"; the file's line is \"reverse_proxy * forqsite_a:3000 forqsite_b:3000 {\", and the row now quotes \"reverse_proxy * forqsite_a:3000 forqsite_b:3000\"."
-    },
-    {
-      "id": "C-026",
-      "page": "gap-handoff.html",
-      "location": "GAP-006 entry, problem and evidence",
-      "claim": "In firstrun.sh step 7.5 the required-variable check pipes cut from true rather than grep, so a key present with an empty value is reported as set.",
-      "quote": "pipes cut from true, not from grep",
-      "evidence": [
-        {
-          "path": "scripts/firstrun.sh",
-          "symbol": "val=$(grep \"^${var}=\" .env.local 2>/dev/null || true | cut -d= -f2-)"
-        },
-        {
-          "path": "scripts/firstrun.sh",
-          "symbol": "step \"7.5. Required variable check\""
-        }
-      ],
-      "stamp": "S-07",
-      "result": "open"
     },
     {
       "id": "C-027",
@@ -1342,7 +1315,7 @@
       ],
       "stamp": "S-02",
       "result": "open",
-      "note": "Verified at the release commit on 2026-09-30, when this block was brought under the section's stamp; the stamp's printed date, 2026-09-24, is the earlier verification of the claims it already covered. The block departs from the runbook's section 12.1 where this site makes its own choice, not a forqsite claim: it restarts this site's systemd units, named on the Process supervision route, where the runbook writes pm2 restart forqsite or your process manager, and it installs with --frozen-lockfile, as forqsite's first-run script does, where the runbook writes pnpm install. The cd path is this site's install location from the Install sequence route."
+      "note": "Verified at forqsite commit 1fda3228 on 2026-09-30, when this block was brought under the section's stamp; that stamp then printed 2026-09-24, the date the claims it already covered were verified. The block departs from the runbook's section 12.1 where this site makes its own choice, not a forqsite claim: it restarts this site's systemd units, named on the Process supervision route, where the runbook writes pm2 restart forqsite or your process manager, and it installs with --frozen-lockfile, as forqsite's first-run script does, where the runbook writes pnpm install. The cd path is this site's install location from the Install sequence route."
     },
     {
       "id": "C-040",
@@ -1362,7 +1335,7 @@
       ],
       "stamp": "S-03",
       "result": "open",
-      "note": "Verified at the release commit on 2026-09-30, when this block was brought under the section's stamp; the stamp's printed date, 2026-09-24, is the earlier verification of the claims it already covered. The unit name is this site's own systemd unit from the Process supervision route, not a forqsite claim. The page's grep pattern was run against a line that begins with the logged prefix, and matched it."
+      "note": "Verified at forqsite commit 1fda3228 on 2026-09-30, when this block was brought under the section's stamp; that stamp then printed 2026-09-24, the date the claims it already covered were verified. The unit name is this site's own systemd unit from the Process supervision route, not a forqsite claim. The page's grep pattern was run against a line that begins with the logged prefix, and matched it."
     },
     {
       "id": "C-041",
@@ -1396,7 +1369,7 @@
           "symbol": "rollback"
         }
       ],
-      "note": "Verified at the release commit on 2026-09-30, when this paragraph was brought under the section's stamp; the stamp's printed date, 2026-09-24, is the earlier verification of the claims it already covered. The restart is this site's systemd restart from the Upgrade block."
+      "note": "Verified at forqsite commit 1fda3228 on 2026-09-30, when this paragraph was brought under the section's stamp; that stamp then printed 2026-09-24, the date the claims it already covered were verified. The restart is this site's systemd restart from the Upgrade block."
     },
     {
       "id": "C-042",
@@ -1440,7 +1413,7 @@
       ],
       "stamp": "S-03",
       "result": "changed",
-      "note": "CHANGED: step 2 said \"pnpm add -w file:/path/to/pack.tgz — after verifying its sha512 against what the author handed over\"; at the release commit the operator runbook's section 14.2 installs by scoped package name, pnpm add -w \"@forqsite-packs/<name>@<version>\", withdraws the file: tarball install by name, and requires the lockfile entry to carry integrity and tarball, and the handover contract's step 9, which the runbook names as authoritative, was rewritten the same way. Step 2 now gives the scoped install, keeps the sha512 check, names the lockfile check, and says the file: install is withdrawn. forqsite's own platform-admin install page still prints the withdrawn command. Verified on 2026-09-30; the stamp's printed date, 2026-09-24, is the earlier verification of the claims it already covered."
+      "note": "CHANGED: step 2 said \"pnpm add -w file:/path/to/pack.tgz — after verifying its sha512 against what the author handed over\"; at forqsite commit 1fda3228 the operator runbook's section 14.2 installs by scoped package name, pnpm add -w \"@forqsite-packs/<name>@<version>\", withdraws the file: tarball install by name, and requires the lockfile entry to carry integrity and tarball, and the handover contract's step 9, which the runbook names as authoritative, was rewritten the same way. Step 2 now gives the scoped install, keeps the sha512 check, names the lockfile check, and says the file: install is withdrawn. forqsite's own platform-admin install page still prints the withdrawn command. Verified at forqsite commit 1fda3228 on 2026-09-30; the section's stamp then printed 2026-09-24, the date the claims it already covered were verified."
     },
     {
       "id": "C-043",
@@ -1476,7 +1449,44 @@
       ],
       "stamp": "S-03",
       "result": "open",
-      "note": "Verified at the release commit on 2026-09-30, when this step was brought under the section's stamp; the stamp's printed date, 2026-09-24, is the earlier verification of the claims it already covered. The regenerated registries are generated files that forqsite commits; the page's no source file is edited means no hand edit."
+      "note": "Verified at forqsite commit 1fda3228 on 2026-09-30, when this step was brought under the section's stamp; that stamp then printed 2026-09-24, the date the claims it already covered were verified. The regenerated registries are generated files that forqsite commits; the page's no source file is edited means no hand edit."
+    }
+  ],
+  "closed": [
+    {
+      "id": "C-026",
+      "gap": "GAP-006",
+      "claim": "In firstrun.sh step 7.5 the required-variable check pipes cut from true rather than grep, so a key present with an empty value is reported as set.",
+      "closed_by": {
+        "commit": "8112020ec1d92e1bdd84cd86ffe3a90fd967c125",
+        "path": "scripts/firstrun.sh"
+      },
+      "evidence": [
+        {
+          "path": "scripts/firstrun.sh",
+          "symbol": "done < <(bash \"${SCRIPT_DIR}/lib/check-required-env.sh\" .env.local \"${REQUIRED_KEYS[@]}\" || true)"
+        },
+        {
+          "path": "scripts/firstrun.sh",
+          "symbol": "fail \"${var} is missing or empty in .env.local\""
+        },
+        {
+          "path": "scripts/lib/check-required-env.sh",
+          "symbol": "line=$(grep \"^${key}=\" \"$envfile\" 2>/dev/null | tail -n 1 || true)"
+        },
+        {
+          "path": "scripts/lib/check-required-env.sh",
+          "symbol": "value=\"${value#\"${value%%[![:space:]]*}\"}\""
+        },
+        {
+          "path": "tests/repo/firstrun-required-vars.test.ts",
+          "symbol": "it('reports MISSING for `K=` (empty value)', () => {"
+        },
+        {
+          "path": "tests/repo/firstrun-required-vars.test.ts",
+          "symbol": "it('reports MISSING for `K=   ` (whitespace-only value)', () => {"
+        }
+      ]
     }
   ]
 }
