@@ -2,7 +2,7 @@
 id: INFRA-020
 rail: INFRA
 title: restamp.py: pin a new release commit in the manifest and both bundles
-status: planned
+status: complete
 phase: "14"
 story_class: code
 auth_gated: false
