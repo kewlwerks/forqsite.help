@@ -2,7 +2,7 @@
 id: INFRA-018
 rail: INFRA
 title: Rollback and a truthful backup report for deploy.sh
-status: planned
+status: complete
 phase: "14"
 story_class: code
 auth_gated: false

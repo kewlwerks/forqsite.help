@@ -67,7 +67,7 @@ Each story is specced, and the spec reviewed by the operator, before it is built
 | ID | Title | Status |
 |----|-------|--------|
 | INFRA-017 | Deploy configuration safe for unattended runs | complete |
-| INFRA-018 | Rollback and a truthful backup report for deploy.sh | planned |
+| INFRA-018 | Rollback and a truthful backup report for deploy.sh | complete |
 | INFRA-019 | Checker hardening and a paste-safe report | complete |
 | CONTENT-039 | Claims for the command blocks inside stamped sections | complete |
 | INFRA-020 | restamp.py: pin a new release commit in the manifest and both bundles | planned |
