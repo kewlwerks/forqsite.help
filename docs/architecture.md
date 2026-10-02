@@ -245,6 +245,12 @@ those tables rather than restating them:
   report rather than silently skipping it.
 - `scripts/make-provenance.sh` — a pure function of `(repo, ref)` that prints the
   provenance sidecar's JSON to stdout; it reads no configuration and contacts no host.
+  Each of the three scripts resolves its ref to a commit exactly once, with `^{commit}`,
+  and reads everything after that through the resolved sha (INFRA-022, CER-063), so an
+  annotated tag is recorded as the commit it points to, a ref that names no commit is
+  refused, and a ref moved mid-run cannot mix commits; `deploy.sh` passes its resolved
+  sha to `make-provenance.sh` with `--commit`, so the name is never resolved twice, and
+  `repo_ref` keeps the ref as given.
 
 **Configuration surface.** All three scripts read their settings from the environment,
 falling back to a gitignored `scripts/deploy.env`. That file is never committed; a

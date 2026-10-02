@@ -101,6 +101,21 @@
 #  22. repeated option (INFRA-018/REPEAT) — `--ref HEAD --ref HEAD`, `--dry-run --dry-run`
 #      and `--rollback <S> --rollback <S>`, each in a fresh target: exit 64, no ssh, the
 #      output says "more than once"
+#  23. resolve once (INFRA-022), on annotated fixture tags rel-fixture (at HEAD),
+#      tree-fixture (a tag of HEAD's tree) and rel-move (at HEAD), each run in a fresh,
+#      empty target:
+#      a. CER-063: `--dry-run --ref rel-fixture` prints
+#         `would deploy ref rel-fixture (resolved <commit>)`; no tag object sha
+#      b. CER-063: `--ref rel-fixture` prints exactly `deployed  <commit>   (rel-fixture)`;
+#         the sidecar has that repo_commit and repo_ref; no tag object sha
+#         (vacuity guard for a and b: the tag object sha differs from the commit's)
+#      c. CER-063: `--ref tree-fixture` exits 3, no ssh, "does not name a commit"
+#      d. MOVE: a git wrapper, first on PATH for this run only, re-points rel-move at a
+#         side commit (built with hash-object, mktree, commit-tree; a different
+#         index.html) straight after the first git call naming it: exit 0,
+#         `deployed  <HEAD>   (rel-move)`, the target's index.html is HEAD's bytes, the
+#         sidecar has HEAD's repo_commit and index.html hash and repo_ref rel-move
+#         (vacuity guard: the seam fired and rel-move^{commit} is now the side commit)
 #
 # Determinism: deploy.sh refuses a deploy whose one-second backup stamp already exists in
 # its target (INFRA-012). So every deploy run that can reach the backup step starts from a
@@ -1610,6 +1625,156 @@ check_repeat() {
 check_repeat "repeated --ref (exit 64, no ssh, says more than once) INFRA-018/REPEAT" --ref HEAD --ref HEAD
 check_repeat "repeated --dry-run (exit 64, no ssh, says more than once) INFRA-018/REPEAT" --dry-run --dry-run
 check_repeat "repeated --rollback (exit 64, no ssh, says more than once) INFRA-018/REPEAT" --rollback "$RB_STAMP" --rollback "$RB_STAMP"
+
+export FORQSITE_HELP_DEPLOY_HOST="fixture-host-alias"
+export FORQSITE_HELP_DEPLOY_DIR="$FIXTURE_TARGET"
+
+# =====================================================================================
+# Case 23 (INFRA-022/CER-063, INFRA-022/MOVE): the ref is resolved to a commit once.
+# Fixture tags: rel-fixture (annotated, at HEAD), tree-fixture (annotated, of HEAD's
+# tree), rel-move (annotated, at HEAD, re-pointed mid-run by the git wrapper below).
+# Every run uses a fresh, empty target.
+# =====================================================================================
+D23_HEAD="$(git -C "$FIXTURE_REPO" rev-parse HEAD)"
+git -C "$FIXTURE_REPO" tag -a -m "fixture: release tag" rel-fixture "$D23_HEAD"
+git -C "$FIXTURE_REPO" tag -a -m "fixture: tag of a tree" tree-fixture "${D23_HEAD}^{tree}"
+git -C "$FIXTURE_REPO" tag -a -m "fixture: moving tag" rel-move "$D23_HEAD"
+D23_TAG_OBJ="$(git -C "$FIXTURE_REPO" rev-parse rel-fixture)"
+D23_TAG_OBJ_SHORT="$(git -C "$FIXTURE_REPO" rev-parse --short rel-fixture)"
+D23_HEAD_INDEX_SHA="$(git -C "$FIXTURE_REPO" show "${D23_HEAD}:index.html" | sha256sum | cut -d' ' -f1)"
+D23_TARGET="$WORK_DIR/case23-resolve-once-target"
+d23_fresh_target() { rm -rf "$D23_TARGET"; mkdir -p "$D23_TARGET"; export FORQSITE_HELP_DEPLOY_DIR="$D23_TARGET"; rm -f "$SSH_MARKER"; }
+d23_sidecar_field() {  # $1 field; prints the target sidecar's field, or nothing
+  python3 -c 'import json, sys; d = json.load(open(sys.argv[1])); print(d["bundles"][sys.argv[2][8:]] if sys.argv[2].startswith("bundles.") else d[sys.argv[2]])' \
+    "$D23_TARGET/site-provenance.json" "$1" 2>/dev/null || true
+}
+
+# 23a: dry run of an annotated tag names the commit it points to.
+d23_fresh_target
+set +e
+out_23a="$(run_deploy --dry-run --ref rel-fixture 2>&1)"
+status_23a=$?
+set -e
+ok=0
+detail=""
+if [ "$D23_TAG_OBJ" = "$D23_HEAD" ]; then
+  ok=1; detail="precondition: rel-fixture's tag object sha equals its commit, so the case is vacuous"
+elif [ "$status_23a" -ne 0 ]; then
+  ok=1; detail="expected exit 0, got $status_23a: $out_23a"
+elif ! printf '%s\n' "$out_23a" | grep -qF "would deploy ref rel-fixture (resolved ${D23_HEAD})"; then
+  ok=1; detail="the dry run does not say 'would deploy ref rel-fixture (resolved ${D23_HEAD})': $out_23a"
+elif printf '%s' "$out_23a" | grep -qF "$D23_TAG_OBJ_SHORT"; then
+  ok=1; detail="the dry run prints the tag object's sha ($D23_TAG_OBJ_SHORT): $out_23a"
+fi
+report "dry run of an annotated tag (exit 0, resolved names its commit, no tag object sha) INFRA-022/CER-063" "$ok" "$detail"
+
+# 23b: a deploy of an annotated tag records and prints the commit it points to.
+d23_fresh_target
+set +e
+out_23b="$(run_deploy --ref rel-fixture 2>&1)"
+status_23b=$?
+set -e
+ok=0
+detail=""
+if [ "$D23_TAG_OBJ" = "$D23_HEAD" ]; then
+  ok=1; detail="precondition: rel-fixture's tag object sha equals its commit, so the case is vacuous"
+elif [ "$status_23b" -ne 0 ]; then
+  ok=1; detail="expected exit 0, got $status_23b: $out_23b"
+elif ! printf '%s\n' "$out_23b" | grep -qxF "deployed  ${D23_HEAD}   (rel-fixture)"; then
+  ok=1; detail="no line is exactly 'deployed  ${D23_HEAD}   (rel-fixture)': $out_23b"
+elif [ "$(d23_sidecar_field repo_commit)" != "$D23_HEAD" ]; then
+  ok=1; detail="the sidecar's repo_commit is not the commit ($D23_HEAD): $(cat "$D23_TARGET/site-provenance.json" 2>/dev/null)"
+elif [ "$(d23_sidecar_field repo_ref)" != "rel-fixture" ]; then
+  ok=1; detail="the sidecar's repo_ref is not rel-fixture"
+elif printf '%s' "$out_23b" | grep -qF "$D23_TAG_OBJ_SHORT"; then
+  ok=1; detail="the deploy prints the tag object's sha ($D23_TAG_OBJ_SHORT): $out_23b"
+fi
+report "deploy of an annotated tag (exit 0, deployed line and sidecar name its commit, repo_ref the tag) INFRA-022/CER-063" "$ok" "$detail"
+
+# 23c: a ref that names no commit is refused before any ssh call.
+d23_fresh_target
+set +e
+out_23c="$(run_deploy --ref tree-fixture 2>&1)"
+status_23c=$?
+set -e
+ok=0
+detail=""
+if [ "$(git -C "$FIXTURE_REPO" cat-file -t 'tree-fixture^{}' 2>/dev/null)" != "tree" ]; then
+  ok=1; detail="precondition: tree-fixture does not peel to a tree, so the case is vacuous"
+elif [ "$status_23c" -ne 3 ]; then
+  ok=1; detail="expected exit 3, got $status_23c: $out_23c"
+elif [ -f "$SSH_MARKER" ]; then
+  ok=1; detail="stub-ssh marker present — ssh was invoked"
+elif ! printf '%s' "$out_23c" | grep -qF 'does not name a commit'; then
+  ok=1; detail="the refusal does not say the ref names no commit: $out_23c"
+fi
+report "deploy of a tag of a tree (exit 3, no ssh, does not name a commit) INFRA-022/CER-063" "$ok" "$detail"
+
+# 23d (MOVE): rel-move is re-pointed at a side commit with a different index.html
+# straight after the first git call that names it. The side commit is built with
+# hash-object, mktree and commit-tree, so HEAD and the working tree stay put.
+D23_SIDE_BLOB="$(printf 'side commit index bundle\n' | git -C "$FIXTURE_REPO" hash-object -w --stdin)"
+D23_GAP_BLOB="$(git -C "$FIXTURE_REPO" rev-parse "${D23_HEAD}:gap-handoff.html")"
+D23_SIDE_TREE="$(printf '100644 blob %s\tgap-handoff.html\n100644 blob %s\tindex.html\n' "$D23_GAP_BLOB" "$D23_SIDE_BLOB" | git -C "$FIXTURE_REPO" mktree)"
+D23_SIDE="$(git -C "$FIXTURE_REPO" commit-tree -p "$D23_HEAD" -m "fixture: side commit" "$D23_SIDE_TREE")"
+
+# The git wrapper runs the real git (captured before the wrapper exists). On the first
+# call naming rel-move while the trigger exists, it deletes the trigger, runs that
+# call, then re-points rel-move at $MOVE_TO with `tag -f -a`, and returns the call's
+# own status. It is first on PATH for this one run only, inside a subshell.
+D23_REAL_GIT="$(command -v git)"
+D23_WRAP_DIR="$WORK_DIR/git-wrap"
+D23_TRIGGER="$WORK_DIR/move-trigger"
+mkdir -p "$D23_WRAP_DIR"
+cat > "$D23_WRAP_DIR/git" <<WRAP
+#!/usr/bin/env bash
+names_move=0
+for a in "\$@"; do
+  case "\$a" in *rel-move*) names_move=1 ;; esac
+done
+if [ "\$names_move" -eq 1 ] && [ -f "$D23_TRIGGER" ]; then
+  rm -f "$D23_TRIGGER"
+  status=0
+  "$D23_REAL_GIT" "\$@" || status=\$?
+  "$D23_REAL_GIT" tag -f -a -m "fixture: moved mid-run" rel-move "\$MOVE_TO" >/dev/null 2>&1
+  exit "\$status"
+fi
+exec "$D23_REAL_GIT" "\$@"
+WRAP
+chmod +x "$D23_WRAP_DIR/git"
+
+d23_fresh_target
+: > "$D23_TRIGGER"
+set +e
+out_23d="$( export PATH="$D23_WRAP_DIR:$PATH"; export MOVE_TO="$D23_SIDE"; run_deploy --ref rel-move 2>&1 )"
+status_23d=$?
+set -e
+d23_moved_to="$(git -C "$FIXTURE_REPO" rev-parse -q --verify 'rel-move^{commit}' 2>/dev/null || true)"
+d23_target_index_sha="$(sha256sum "$D23_TARGET/index.html" 2>/dev/null | cut -d' ' -f1 || true)"
+ok=0
+detail=""
+if [ -f "$D23_TRIGGER" ]; then
+  ok=1; detail="precondition: the seam never fired (no git call named rel-move)"
+elif [ "$d23_moved_to" != "$D23_SIDE" ]; then
+  ok=1; detail="precondition: rel-move^{commit} is $d23_moved_to after the run, not the side commit $D23_SIDE"
+elif [ "$(git -C "$FIXTURE_REPO" rev-parse "${D23_SIDE}:index.html")" = "$(git -C "$FIXTURE_REPO" rev-parse "${D23_HEAD}:index.html")" ]; then
+  ok=1; detail="precondition: the side commit's index.html equals HEAD's, so the case is vacuous"
+elif [ "$status_23d" -ne 0 ]; then
+  ok=1; detail="expected exit 0, got $status_23d: $out_23d"
+elif ! printf '%s\n' "$out_23d" | grep -qxF "deployed  ${D23_HEAD}   (rel-move)"; then
+  ok=1; detail="no line is exactly 'deployed  ${D23_HEAD}   (rel-move)': $out_23d"
+elif [ "$d23_target_index_sha" != "$D23_HEAD_INDEX_SHA" ]; then
+  ok=1; detail="the target's index.html is not HEAD's bytes"
+elif [ "$(d23_sidecar_field repo_commit)" != "$D23_HEAD" ]; then
+  ok=1; detail="the sidecar's repo_commit is not HEAD ($D23_HEAD)"
+elif [ "$(d23_sidecar_field repo_ref)" != "rel-move" ]; then
+  ok=1; detail="the sidecar's repo_ref is not rel-move"
+elif [ "$(d23_sidecar_field bundles.index.html)" != "$D23_HEAD_INDEX_SHA" ]; then
+  ok=1; detail="the sidecar's index.html hash is not HEAD's"
+fi
+rm -f "$D23_TRIGGER"
+report "deploy of a ref moved to a side commit straight after its first read (exit 0, deployed line, bytes and sidecar are the resolved commit's) INFRA-022/MOVE" "$ok" "$detail"
+rm -rf "$D23_TARGET"
 
 export FORQSITE_HELP_DEPLOY_HOST="fixture-host-alias"
 export FORQSITE_HELP_DEPLOY_DIR="$FIXTURE_TARGET"

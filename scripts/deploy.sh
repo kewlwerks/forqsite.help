@@ -14,6 +14,20 @@
 #     known key is refused (exit 2) by line number, without printing its content.
 #   - Refuses (exit 64), straight after argument parsing and before any git or ssh work,
 #     a --ref outside the class REF_RE (below; make-provenance.sh holds the same class).
+#   - Resolves the ref to the commit it names exactly once (INFRA-022, CER-063), with
+#     `git rev-parse -q --verify --end-of-options "<ref>^{commit}"`, after the REF_RE
+#     check and before any ssh call, and refuses (exit 3) a ref that does not name a
+#     commit (a missing ref, or a tag of a tree or blob). An annotated tag — which
+#     release.sh always passes — is therefore deployed and recorded as the commit it
+#     points to, never as the tag object's own sha.
+#   - Resolve-once invariant: every git read after that resolution — the dirty check's
+#     `cat-file -e` and both `git diff`s, the dry run's `git show`, the local hash, the
+#     copy, and the success record — names the resolved sha (COMMIT), never the ref
+#     name. make-provenance.sh is called with `--ref "$REF" --commit "$COMMIT"`, so it
+#     does not resolve the name a second time in a second process. A ref that moves
+#     mid-run therefore cannot mix two commits into one deploy. The ref name survives
+#     only in messages, in the success record's (ref) parenthetical, and as the
+#     sidecar's repo_ref.
 #   - Refuses to proceed, before any network contact, if either bundle is untracked at
 #     the ref, or its working-tree or staged content differs from that ref ("dirty").
 #   - Backs up each live bundle on the remote side to <name>.bak-<UTC stamp>, then
@@ -21,7 +35,7 @@
 #     bundle at the given ref (default HEAD), then verifies each file's sha256 on the
 #     far side against the same ref's bytes computed locally.
 #   - After both bundles have been copied and hash-verified, generates a provenance
-#     sidecar (scripts/make-provenance.sh --ref "$REF") and deploys it to
+#     sidecar (scripts/make-provenance.sh --ref "$REF" --commit "$COMMIT") and deploys it to
 #     site-provenance.json using the same backup / overwrite-in-place / verify-sha256
 #     sequence. The sidecar is written last, deliberately: it asserts "this commit is
 #     deployed", and writing it before the bundles land would publish that claim even
@@ -91,7 +105,8 @@
 #      FORQSITE_HELP_DEPLOY_DIR unset, or scripts/deploy.env has a refused line), or
 #      FORQSITE_HELP_DEPLOY_HOST does not match the ssh-alias pattern
 #      ^[A-Za-z0-9._][A-Za-z0-9._-]*$ (letters, digits, ., _, -; may not begin with -)
-#   3  dirty-tree refusal (untracked at the ref, or working tree / index differs)
+#   3  dirty-tree refusal (the ref does not name a commit, untracked at the ref, or
+#      working tree / index differs)
 #   4  hash verification failure (remote bytes do not match the ref's bytes; in a
 #      rollback, a fetched backup or a restored live file does not match the sha256 the
 #      inventory reported for that backup)
@@ -490,19 +505,33 @@ print_backups_line() {
 
 # --- Dirty check (before any network contact) -------------------------------------
 # Skipped by a rollback, which involves no ref.
+#
+# Resolve once (INFRA-022, CER-063): the ref is peeled to the commit it names here,
+# after the REF_RE check above and before any ssh call, and nowhere else. A ref that
+# does not name a commit (missing, or a tag of a tree or blob) is a dirty-check refusal
+# (exit 3). Every git read below — this check, the dry run, both local hashes, the
+# copy, make-provenance.sh (via --commit) and the success record — names COMMIT, never
+# $REF, so a ref moved mid-run cannot mix commits.
+COMMIT=""
+if [ "$ROLLBACK_GIVEN" -eq 0 ]; then
+  if ! COMMIT="$(git rev-parse -q --verify --end-of-options "${REF}^{commit}")"; then
+    echo "deploy.sh: ref ${REF} does not name a commit" >&2
+    exit 3
+  fi
+fi
 dirty_found=0
 [ "$ROLLBACK_GIVEN" -eq 1 ] && BUNDLES_TO_CHECK=() || BUNDLES_TO_CHECK=("${BUNDLES[@]}")
 for bundle in "${BUNDLES_TO_CHECK[@]}"; do
-  if ! git cat-file -e "${REF}:${bundle}" 2>/dev/null; then
+  if ! git cat-file -e "${COMMIT}:${bundle}" 2>/dev/null; then
     echo "deploy.sh: ${bundle} is not tracked at ref ${REF} (untracked)" >&2
     dirty_found=1
     continue
   fi
-  if ! git diff --quiet "${REF}" -- "${bundle}"; then
+  if ! git diff --quiet "${COMMIT}" -- "${bundle}"; then
     echo "deploy.sh: ${bundle} is dirty (unstaged working-tree changes differ from ref ${REF})" >&2
     dirty_found=1
   fi
-  if ! git diff --quiet --cached "${REF}" -- "${bundle}"; then
+  if ! git diff --quiet --cached "${COMMIT}" -- "${bundle}"; then
     echo "deploy.sh: ${bundle} is dirty (staged changes differ from ref ${REF})" >&2
     dirty_found=1
   fi
@@ -517,13 +546,13 @@ STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 
 if [ "$DRY_RUN" -eq 1 ]; then
   echo "deploy.sh: dry run — all local checks passed, no ssh will be invoked"
-  echo "deploy.sh: would deploy ref ${REF} (resolved $(git rev-parse "${REF}")) with stamp ${STAMP}"
+  echo "deploy.sh: would deploy ref ${REF} (resolved ${COMMIT}) with stamp ${STAMP}"
   for bundle in "${BUNDLES[@]}"; do
-    sha="$(git show "${REF}:${bundle}" | sha256sum | cut -d' ' -f1)"
+    sha="$(git show "${COMMIT}:${bundle}" | sha256sum | cut -d' ' -f1)"
     echo "deploy.sh: would back up and overwrite ${bundle} (sha256 ${sha}) on the configured target"
   done
   echo "deploy.sh: would generate and deploy site-provenance.json (after both bundles verify):"
-  "$MAKE_PROVENANCE_SH" --ref "$REF"
+  "$MAKE_PROVENANCE_SH" --ref "$REF" --commit "$COMMIT"
   echo "deploy.sh: would mark stamp ${STAMP} verified and prune verified backup sets beyond ${BACKUP_KEEP} (never this deploy's set, never a set without a marker)"
   exit 0
 fi
@@ -681,7 +710,7 @@ declare -A REMOTE_SHA
 declare -A LOCAL_SHA
 
 for bundle in "${BUNDLES[@]}"; do
-  LOCAL_SHA["$bundle"]="$(git show "${REF}:${bundle}" | sha256sum | cut -d' ' -f1)"
+  LOCAL_SHA["$bundle"]="$(git show "${COMMIT}:${bundle}" | sha256sum | cut -d' ' -f1)"
   # Step 1: backup the live file on the far side, if present.
   backup_live "$bundle" || exit 5
 
@@ -689,7 +718,7 @@ for bundle in "${BUNDLES[@]}"; do
   # the live file in place (never rename over it — see header note on bind-mount
   # inode following).
   status=0
-  git show "${REF}:${bundle}" | run_ssh "$(remote_copy_cmd "$bundle")" || status=$?
+  git show "${COMMIT}:${bundle}" | run_ssh "$(remote_copy_cmd "$bundle")" || status=$?
   if [ "$status" -ne 0 ]; then
     echo "deploy.sh: remote copy step failed for ${bundle}" >&2
     echo "deploy.sh: reason: $(ssh_reason_label "$status")" >&2
@@ -727,7 +756,7 @@ fi
 # it asserts "this commit is deployed", and a failure here must never leave a stale
 # or partial sidecar published as if it were current.
 SIDECAR_NAME="site-provenance.json"
-SIDECAR_CONTENT="$("$MAKE_PROVENANCE_SH" --ref "$REF")"
+SIDECAR_CONTENT="$("$MAKE_PROVENANCE_SH" --ref "$REF" --commit "$COMMIT")"
 SIDECAR_LOCAL_SHA="$(printf '%s' "$SIDECAR_CONTENT" | sha256sum | cut -d' ' -f1)"
 
 # Step 1: backup the live sidecar on the far side, if present.
@@ -884,9 +913,7 @@ exit \"\$failed\""
 done
 
 # --- Success record --------------------------------------------------------------------
-RESOLVED_REF="$(git rev-parse "${REF}")"
-
-echo "deployed  ${RESOLVED_REF}   (${REF})"
+echo "deployed  ${COMMIT}   (${REF})"
 echo "stamp     ${STAMP}"
 echo "index.html         ${LOCAL_SHA[index.html]}  verified"
 echo "gap-handoff.html   ${LOCAL_SHA[gap-handoff.html]}  verified"

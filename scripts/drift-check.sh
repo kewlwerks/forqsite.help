@@ -22,13 +22,23 @@
 #     URL the environment sets is used as set, whatever the file holds. Any line that is
 #     not a KEY=value line for a known key is refused (exit 2) by line number, without
 #     printing its content.
+#   - Resolves the ref (default HEAD) to the commit it names exactly once (INFRA-022,
+#     CER-063), with `git rev-parse -q --verify --end-of-options "<ref>^{commit}"`,
+#     before the bundle loop and so before any fetch, and refuses (exit 5) a ref that
+#     does not name a commit (a missing ref, or a tag of a tree or blob). An annotated
+#     tag is therefore checked and reported as the commit it points to: the `ref` line
+#     names that commit's full sha, short sha and subject, never the tag object's sha.
+#   - Resolve-once invariant: every git read after that resolution — the tracked-at
+#     check, each `git show`, the subject, the `rev-list` walk and the
+#     `<match>..<commit>` behind-count — names the resolved sha (REF_FULL), never the
+#     ref name, so a ref that moves mid-run cannot mix two commits into one report.
 #   - For each bundle: fetches <base-url>/<bundle> to a file (never a shell variable —
 #     command substitution strips trailing newlines and would report a false DRIFT on
 #     a correct site), with an identity content-encoding and no redirect following,
 #     and hashes the fetched bytes with sha256.
-#   - Computes sha256 of `git show <ref>:<bundle>` (default ref HEAD) for the same
-#     bundle, and compares.
-#   - On a mismatch, walks the commits reachable from the ref that touched that
+#   - Computes sha256 of `git show <commit>:<bundle>` (the resolved commit) for the
+#     same bundle, and compares.
+#   - On a mismatch, walks the commits reachable from that commit that touched that
 #     bundle, hashing each distinct blob, to name which committed version (if any)
 #     the served bytes actually match — because "the bytes differ" is a weaker report
 #     than "the bytes differ, and the site is serving commit <X>".
@@ -59,7 +69,8 @@
 #       scheme — only http/https are permitted, so e.g. a file:// base URL is refused
 #       rather than read as a local path — or a response that exceeded the configured
 #       size bound)
-#   5   a bundle is not tracked at the ref
+#   5   the ref does not name a commit (INFRA-022, CER-063; refused before any fetch),
+#       or a bundle is not tracked at the ref
 #   6   provenance sidecar contradiction — the sidecar's claimed sha256 for a bundle
 #       disagrees with that bundle's served bytes, and no bundle drifted (exit 3 takes
 #       precedence whenever both conditions hold). This decision is always made on the
@@ -100,8 +111,8 @@
 #     the configured origin echoing itself back. Only the HTTP status code is
 #     reported, plus the fact that it was a redirect.
 #   - The provenance sidecar can only ever add a failure because the bundle
-#     match/drift decision is, and remains, served bytes vs `git show <ref>:<bundle>`
-#     alone — the sidecar's repo_commit, its deployed_at, its claimed bundle sha256
+#     match/drift decision is, and remains, served bytes vs `git show <commit>:<bundle>`
+#     (the ref's resolved commit) alone — the sidecar's repo_commit, its deployed_at, its claimed bundle sha256
 #     values, and its mere presence are never the basis of that decision, only ever
 #     reported alongside it.
 #   - Both fetches restrict curl to `--proto '=http,https'` (INFRA-010/CER-021): the
@@ -293,7 +304,7 @@ fetch_provenance() {
 }
 
 # --- Name which commit the served bytes match, when they do not match the ref -------
-# Walks commits reachable from $REF that touched $bundle, newest first, hashing each
+# Walks commits reachable from the resolved commit ($REF_FULL) that touched $bundle, newest first, hashing each
 # distinct blob until one matches $served_sha. Prints its report line either way; a
 # no-match is a real state of the world (hand-edited on the host, or deployed from a
 # ref outside this history), not a failure of the check.
@@ -312,14 +323,14 @@ report_matching_commit() {
       match_commit="$commit"
       break
     fi
-  done < <(git rev-list "$REF" -- "$bundle")
+  done < <(git rev-list "$REF_FULL" -- "$bundle")
 
   if [ -n "$match_commit" ]; then
     local short date subject behind
     short="$(git rev-parse --short "$match_commit")"
     date="$(git log -1 --format=%cd --date=short "$match_commit")"
     subject="$(git log -1 --format=%s "$match_commit")"
-    behind="$(git rev-list --count "${match_commit}..${REF}")"
+    behind="$(git rev-list --count "${match_commit}..${REF_FULL}")"
     echo "  live bytes match  ${short} ${date} \"${subject}\"  (${behind} commits behind the ref)"
   else
     echo "  served bytes match no commit in this history that touched ${bundle} — hand-edited on the host, or deployed from a ref outside this history"
@@ -334,8 +345,19 @@ trap cleanup EXIT
 declare -A SERVED_SHA
 declare -A COMMITTED_SHA
 
+# --- Tracked-at-ref check -------------------------------------------------------------
+# Resolve once (INFRA-022, CER-063), before the bundle loop and so before any fetch:
+# the ref is peeled to the commit it names here and nowhere else. --end-of-options
+# keeps a ref such as --abbrev-ref=strict from being read as an option (this script
+# has no REF_RE; INFRA-017). Every git read below names REF_FULL, never $REF, so a
+# ref moved mid-run cannot mix commits.
+if ! REF_FULL="$(git rev-parse -q --verify --end-of-options "${REF}^{commit}")"; then
+  echo "drift-check.sh: ref ${REF} does not name a commit" >&2
+  exit 5
+fi
+
 for bundle in "${BUNDLES[@]}"; do
-  if ! git cat-file -e "${REF}:${bundle}" 2>/dev/null; then
+  if ! git cat-file -e "${REF_FULL}:${bundle}" 2>/dev/null; then
     echo "drift-check.sh: ${bundle} is not tracked at ref ${REF}" >&2
     exit 5
   fi
@@ -343,12 +365,11 @@ for bundle in "${BUNDLES[@]}"; do
   fetch_bundle "$SCRATCH" "$bundle"
 
   SERVED_SHA["$bundle"]="$(sha256sum "${SCRATCH}/${bundle}" | cut -d' ' -f1)"
-  COMMITTED_SHA["$bundle"]="$(git show "${REF}:${bundle}" | sha256sum | cut -d' ' -f1)"
+  COMMITTED_SHA["$bundle"]="$(git show "${REF_FULL}:${bundle}" | sha256sum | cut -d' ' -f1)"
 done
 
-REF_FULL="$(git rev-parse "$REF")"
-REF_SHORT="$(git rev-parse --short "$REF")"
-REF_SUBJECT="$(git log -1 --format=%s "$REF")"
+REF_SHORT="$(git rev-parse --short "$REF_FULL")"
+REF_SUBJECT="$(git log -1 --format=%s "$REF_FULL")"
 
 printf 'ref                %s  %s "%s"\n' "$REF_FULL" "$REF_SHORT" "$REF_SUBJECT"
 

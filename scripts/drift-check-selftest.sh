@@ -72,6 +72,21 @@
 #   16. no URL globbing (INFRA-017/CER-034) — HEAD's bundles served under a literal
 #                                 `{g}/` directory, site URL `<fixture URL>/{g}`: exit 0,
 #                                 and the request log holds the literal `{g}/index.html`
+#   17. resolve once (INFRA-022), on annotated fixture tags rel-fixture (at HEAD),
+#       tree-fixture (a tag of HEAD's tree) and rel-move (at COMMIT3):
+#       a. CER-063: --ref rel-fixture, matching site — exit 0; fields 2 and 3 of the
+#                                 `ref` line are the commit's full and short sha; the
+#                                 tag object's short sha absent
+#       b. CER-063: --ref rel-fixture, serving `index v1` — exit 3, "2 commits behind
+#                                 the ref", the same ref-line checks
+#                                 (vacuity guard for a and b: tag object sha != commit)
+#       c. CER-063: --ref tree-fixture — exit 5, the request log is empty, "does not
+#                                 name a commit"
+#       d. MOVE: --ref rel-move with a git wrapper, first on PATH for this run only,
+#                                 that re-points rel-move at COMMIT2 straight after the
+#                                 first git call naming it: exit 0, the ref line names
+#                                 COMMIT3 (vacuity guard: the seam fired and
+#                                 rel-move^{commit} is now COMMIT2)
 #
 # Exits non-zero if any case fails.
 
@@ -786,6 +801,134 @@ elif ! grep -qxF '{g}/index.html' "$REQUEST_LOG"; then
 fi
 report "no URL globbing (site URL ending /{g}; exit 0, literal {g}/index.html requested) INFRA-017/CER-034" "$ok" "$detail"
 rm -rf "$GLOB_DIR"
+reset_control
+
+# =====================================================================================
+# Case 17 (INFRA-022/CER-063, INFRA-022/MOVE): the ref is resolved to a commit once.
+# Fixture tags: rel-fixture (annotated, at HEAD = COMMIT3), tree-fixture (annotated, of
+# HEAD's tree), rel-move (annotated, at COMMIT3, re-pointed mid-run by the git wrapper).
+# =====================================================================================
+git -C "$FIXTURE_REPO" tag -a -m "fixture: release tag" rel-fixture "$COMMIT3"
+git -C "$FIXTURE_REPO" tag -a -m "fixture: tag of a tree" tree-fixture "${COMMIT3}^{tree}"
+git -C "$FIXTURE_REPO" tag -a -m "fixture: moving tag" rel-move "$COMMIT3"
+D17_TAG_OBJ="$(git -C "$FIXTURE_REPO" rev-parse rel-fixture)"
+D17_TAG_OBJ_SHORT="$(git -C "$FIXTURE_REPO" rev-parse --short rel-fixture)"
+D17_COMMIT3_SHORT="$(git -C "$FIXTURE_REPO" rev-parse --short "$COMMIT3")"
+
+# Prints fields 2 and 3 of the report's `ref` line (full sha, short sha).
+d17_ref_fields() { printf '%s\n' "$1" | awk '$1 == "ref" { print $2, $3; exit }'; }
+
+check_tag_ref_line() {  # $1 output; sets ok/detail when the ref line is wrong
+  local fields
+  fields="$(d17_ref_fields "$1")"
+  if [ "$D17_TAG_OBJ" = "$COMMIT3" ]; then
+    ok=1; detail="precondition: rel-fixture's tag object sha equals its commit, so the case is vacuous"
+  elif [ "$fields" != "$COMMIT3 $D17_COMMIT3_SHORT" ]; then
+    ok=1; detail="fields 2 and 3 of the ref line are '$fields', not the commit's full and short sha ($COMMIT3 $D17_COMMIT3_SHORT)"
+  elif printf '%s' "$1" | grep -qF "$D17_TAG_OBJ_SHORT"; then
+    ok=1; detail="the report prints the tag object's sha ($D17_TAG_OBJ_SHORT)"
+  fi
+}
+
+# 17a: an annotated tag at HEAD, matching site.
+reset_control
+set +e
+out_17a="$(run_drift_check --ref rel-fixture 2>&1)"
+status_17a=$?
+set -e
+ok=0
+detail=""
+check_tag_ref_line "$out_17a"
+if [ "$ok" -eq 0 ] && [ "$status_17a" -ne 0 ]; then
+  ok=1; detail="expected exit 0, got $status_17a: $out_17a"
+fi
+report "annotated tag, matching site (exit 0, the ref line names the commit, no tag object sha) INFRA-022/CER-063" "$ok" "$detail"
+
+# 17b: an annotated tag at HEAD, served index v1.
+reset_control
+printf 'index v1\n' > "$CONTROL_DIR/override-index.html"
+set +e
+out_17b="$(run_drift_check --ref rel-fixture 2>&1)"
+status_17b=$?
+set -e
+ok=0
+detail=""
+check_tag_ref_line "$out_17b"
+if [ "$ok" -eq 0 ] && [ "$status_17b" -ne 3 ]; then
+  ok=1; detail="expected exit 3, got $status_17b: $out_17b"
+elif [ "$ok" -eq 0 ] && ! printf '%s' "$out_17b" | grep -q "2 commits behind the ref"; then
+  ok=1; detail="output did not report 2 commits behind the ref: $out_17b"
+fi
+report "annotated tag, served index v1 (exit 3, 2 commits behind, the ref line names the commit, no tag object sha) INFRA-022/CER-063" "$ok" "$detail"
+reset_control
+
+# 17c: a ref that names no commit is refused before any fetch.
+reset_control
+set +e
+out_17c="$(run_drift_check --ref tree-fixture 2>&1)"
+status_17c=$?
+set -e
+ok=0
+detail=""
+if [ "$(git -C "$FIXTURE_REPO" cat-file -t 'tree-fixture^{}' 2>/dev/null)" != "tree" ]; then
+  ok=1; detail="precondition: tree-fixture does not peel to a tree, so the case is vacuous"
+elif [ "$status_17c" -ne 5 ]; then
+  ok=1; detail="expected exit 5, got $status_17c: $out_17c"
+elif [ -s "$REQUEST_LOG" ]; then
+  ok=1; detail="a request was made: $(cat "$REQUEST_LOG")"
+elif ! printf '%s' "$out_17c" | grep -qF 'does not name a commit'; then
+  ok=1; detail="the refusal does not say the ref names no commit: $out_17c"
+fi
+report "a tag of a tree (exit 5, no request, does not name a commit) INFRA-022/CER-063" "$ok" "$detail"
+
+# 17d (MOVE): rel-move is at COMMIT3 (the served bytes) and is re-pointed at COMMIT2
+# straight after the first git call that names it. The git wrapper runs the real git
+# (captured before the wrapper exists); on the first call naming rel-move while the
+# trigger exists, it deletes the trigger, runs that call, then re-points rel-move at
+# $MOVE_TO with `tag -f -a`, and returns the call's own status. It is first on PATH for
+# this one run only, inside a subshell.
+D17_REAL_GIT="$(command -v git)"
+D17_WRAP_DIR="$WORK_DIR/git-wrap"
+D17_TRIGGER="$WORK_DIR/move-trigger"
+mkdir -p "$D17_WRAP_DIR"
+cat > "$D17_WRAP_DIR/git" <<WRAP
+#!/usr/bin/env bash
+names_move=0
+for a in "\$@"; do
+  case "\$a" in *rel-move*) names_move=1 ;; esac
+done
+if [ "\$names_move" -eq 1 ] && [ -f "$D17_TRIGGER" ]; then
+  rm -f "$D17_TRIGGER"
+  status=0
+  "$D17_REAL_GIT" "\$@" || status=\$?
+  "$D17_REAL_GIT" tag -f -a -m "fixture: moved mid-run" rel-move "\$MOVE_TO" >/dev/null 2>&1
+  exit "\$status"
+fi
+exec "$D17_REAL_GIT" "\$@"
+WRAP
+chmod +x "$D17_WRAP_DIR/git"
+
+reset_control
+: > "$D17_TRIGGER"
+set +e
+out_17d="$( export PATH="$D17_WRAP_DIR:$PATH"; export MOVE_TO="$COMMIT2"; run_drift_check --ref rel-move 2>&1 )"
+status_17d=$?
+set -e
+d17_moved_to="$(git -C "$FIXTURE_REPO" rev-parse -q --verify 'rel-move^{commit}' 2>/dev/null || true)"
+d17_fields="$(d17_ref_fields "$out_17d")"
+ok=0
+detail=""
+if [ -f "$D17_TRIGGER" ]; then
+  ok=1; detail="precondition: the seam never fired (no git call named rel-move)"
+elif [ "$d17_moved_to" != "$COMMIT2" ]; then
+  ok=1; detail="precondition: rel-move^{commit} is $d17_moved_to after the run, not the move target $COMMIT2"
+elif [ "$status_17d" -ne 0 ]; then
+  ok=1; detail="expected exit 0, got $status_17d: $out_17d"
+elif [ "$d17_fields" != "$COMMIT3 $D17_COMMIT3_SHORT" ]; then
+  ok=1; detail="the ref line names '$d17_fields', not the resolved commit ($COMMIT3 $D17_COMMIT3_SHORT)"
+fi
+rm -f "$D17_TRIGGER"
+report "a ref moved to COMMIT2 straight after its first read (exit 0, the ref line names the resolved COMMIT3) INFRA-022/MOVE" "$ok" "$detail"
 reset_control
 
 # =====================================================================================
