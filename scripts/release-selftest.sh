@@ -30,7 +30,13 @@
 #
 # Cases (tokens): CLEAN, NOOP, LATEST, AHEAD, DRYRUN, STALE, DRIFT, DEPLOY, PUSH, REFUSE
 # (every refusal code), HYGIENE (no work-directory path, alias, 127.0.0.1 or port in any
-# release.sh output).
+# release.sh output). INFRA-023 adds, under tokens INFRA-023/<TOKEN>: PARTIAL (a real
+# partial restamp write through a read-only docs/: exit 11, the restore line, and a clean
+# tree after running it; SKIP when docs/ stays writable, as for root), PUSHURL (a pushurl
+# that differs from the url refuses with 2 and prints neither URL, also with GIT_CONFIG set;
+# pushurls equal to the url are not refused) and REFSPEC (with hijacking remote.origin.push
+# refspecs, both the release's own push and the printed exit-17 push line land on main and
+# rel-<t8>).
 #
 # Exits non-zero if any case fails.
 
@@ -90,9 +96,12 @@ mkdir -p "$HOME" "$TARGET" "$CONTROL_DIR" "$STUB_BIN"
 
 FAILURES=0
 PASS_COUNT=0
-# report <TOKEN> <name> <ok> <detail>: every name ends " — INFRA-021/<TOKEN>".
+# report <TOKEN> <name> <ok> <detail>: every name ends " — INFRA-021/<TOKEN>", or " — <TOKEN>"
+# when the token already names its story (contains a /, e.g. INFRA-023/PARTIAL).
 report() {
-  local name="$2 — INFRA-021/$1" ok="$3" detail="$4"
+  local token="$1"
+  case "$token" in */*) ;; *) token="INFRA-021/$token" ;; esac
+  local name="$2 — $token" ok="$3" detail="$4"
   if [ "$ok" -eq 0 ]; then
     echo "PASS: $name"
     PASS_COUNT=$((PASS_COUNT + 1))
@@ -547,7 +556,7 @@ report DRIFT "the annotated tag exists locally" \
   "$([ "$(git -C "$C" cat-file -t "rel-$T1_8" 2>/dev/null)" = "tag" ] && echo 0 || echo 1)" "no tag object"
 ok=1
 if has "$OUT" "release:   scripts/deploy.sh --ref rel-$T1_8" && has "$OUT" "release:   scripts/drift-check.sh --ref rel-$T1_8" \
-  && has "$OUT" "release:   git push --atomic origin main rel-$T1_8" && has "$OUT" "release:   git tag -d rel-$T1_8" \
+  && has "$OUT" "release:   git push --atomic origin refs/heads/main:refs/heads/main refs/tags/rel-$T1_8:refs/tags/rel-$T1_8" && has "$OUT" "release:   git tag -d rel-$T1_8" \
   && has "$OUT" "release:   git reset --keep $PRE"; then ok=0; fi
 report DRIFT "prints the finish and abandon steps with PRE" "$ok" "stdout: $OUT"
 DSTAMP="$(sed -n 's/^stamp  *\([0-9]\{8\}T[0-9]\{6\}Z\)$/\1/p' <<< "$OUT" | head -n 1)"
@@ -595,7 +604,7 @@ run_release -- --yes "$T1"
 ok=1
 if [ "$RC" -eq 17 ] && origin_unchanged \
   && [ "$(served index.html | sha256sum)" = "$(git -C "$C" show "rel-$T1_8:index.html" | sha256sum)" ] \
-  && has "$OUT" "release:   git push --atomic origin main rel-$T1_8"; then ok=0; fi
+  && has "$OUT" "release:   git push --atomic origin refs/heads/main:refs/heads/main refs/tags/rel-$T1_8:refs/tags/rel-$T1_8"; then ok=0; fi
 report PUSH "push rejected (exit 17), origin unchanged, release served, push step printed" "$ok" "exit $RC; stdout: $OUT; stderr: $ERR"
 
 # =====================================================================================
@@ -722,6 +731,145 @@ git -C "$C" push -q origin "refs/tags/rel-$T1_8"
 snap
 run_release -- --yes "$T1"
 expect REFUSE "rel-<t8> exists but release.commit differs (exit 10, nothing touched)" 10
+
+# =====================================================================================
+# PARTIAL (INFRA-023): restamp.py fails after a partial write
+# =====================================================================================
+# restamp.py writes both bundles at the repo root first and the manifest last, each through
+# mkstemp in the file's own directory. With docs/ unwritable, both bundle renames land and
+# then the manifest's mkstemp fails, so restamp exits 5: a real partial write through the
+# production path. The probe tests that precondition itself (root, or a filesystem that
+# ignores modes, leaves docs/ writable), and the case is skipped, never passed, without it.
+refs_state() {
+  git -C "$C" rev-parse HEAD
+  git -C "$C" for-each-ref --format='%(refname) %(objectname)' refs/tags
+  echo "-- origin"
+  git -C "$O" for-each-ref --format='%(refname) %(objectname)'
+}
+new_case
+chmod a-w "$C/docs"
+if ( : > "$C/docs/.write-probe" ) 2>/dev/null; then
+  rm -f "$C/docs/.write-probe"
+  chmod u+w "$C/docs"
+  echo "SKIP: a partial restamp write (exit 11) — INFRA-023/PARTIAL — docs/ stays writable after chmod a-w (root, or a filesystem that ignores modes)"
+else
+  REFS_BEFORE="$(refs_state)"
+  run_release -- --yes "$T1"
+  PARTIAL_STATUS="$(git -C "$C" status --porcelain --untracked-files=no)"
+  ok=1
+  if [ "$RC" -eq 11 ] && has "$ERR" "restamp.py exited 5" \
+    && [ "$PARTIAL_STATUS" = "$(printf ' M gap-handoff.html\n M index.html')" ] \
+    && [ "$(refs_state)" = "$REFS_BEFORE" ] && [ ! -e "$SSH_MARKER" ]; then ok=0; fi
+  report INFRA-023/PARTIAL "a partial restamp write (exit 11): restamp.py exited 5, only the two bundles changed, HEAD, tags and origin unchanged, no ssh" \
+    "$ok" "exit $RC; status: $PARTIAL_STATUS; stdout: $OUT; stderr: $ERR"
+  RESTORE_LINE="$(grep -xF 'release:   git restore --staged --worktree -- .' <<< "$OUT" | head -n 1 || true)"
+  report INFRA-023/PARTIAL "exit 11 after a partial write prints the restore line" \
+    "$([ -n "$RESTORE_LINE" ] && echo 0 || echo 1)" "stdout: $OUT"
+  RESTORE_CMD="${RESTORE_LINE#release:   }"
+  set +e
+  (cd "$C" && bash -c "$RESTORE_CMD") > "$WORK_DIR/partial-restore.out" 2>&1
+  rrc=$?
+  set -e
+  ok=1
+  if [ -n "$RESTORE_CMD" ] && [ "$rrc" -eq 0 ] && [ -z "$(git -C "$C" status --porcelain)" ]; then ok=0; fi
+  report INFRA-023/PARTIAL "the printed restore line, run with docs/ still read-only, exits 0 and leaves a clean tree" \
+    "$ok" "exit $rrc; status: $(git -C "$C" status --porcelain | tr '\n' ' ')"
+  chmod u+w "$C/docs"
+fi
+
+# =====================================================================================
+# PUSHURL (INFRA-023): origin is pushed where it is read
+# =====================================================================================
+new_case
+ELSEWHERE="$(dirname "$O")/elsewhere.git"
+cp -a "$O" "$ELSEWHERE"
+elsewhere_refs() { git -C "$ELSEWHERE" for-each-ref --format='%(refname) %(objectname)'; }
+ELSEWHERE_BEFORE="$(elsewhere_refs)"
+
+git -C "$C" config remote.origin.pushurl "$ELSEWHERE"
+snap
+run_release -- --yes "$T1"
+expect INFRA-023/PUSHURL "a pushurl that differs from the url (exit 2, nothing touched)" 2
+ok=0
+for s in "$O" "$ELSEWHERE" "$(basename "$ELSEWHERE")"; do
+  if has "$OUT$ERR" "$s"; then ok=1; fi
+done
+has "$ERR" "remote.origin.pushurl" || ok=1
+report INFRA-023/PUSHURL "the split-pushurl refusal names the key and prints neither URL" "$ok" "stdout: $OUT; stderr: $ERR"
+
+git -C "$C" config --unset-all remote.origin.pushurl
+git -C "$C" config --add remote.origin.pushurl "$O"
+git -C "$C" config --add remote.origin.pushurl "$ELSEWHERE"
+snap
+run_release -- --yes "$T1"
+expect INFRA-023/PUSHURL "two pushurls, only the second differing (exit 2, nothing touched)" 2
+report INFRA-023/PUSHURL "two pushurls: the other repository's refs are unchanged" \
+  "$([ "$(elsewhere_refs)" = "$ELSEWHERE_BEFORE" ] && echo 0 || echo 1)" "the other repository's refs changed"
+
+git -C "$C" config --unset-all remote.origin.pushurl
+git -C "$C" config remote.origin.pushurl "$ELSEWHERE"
+snap
+run_release GIT_CONFIG=/dev/null -- --yes "$T1"
+expect INFRA-023/PUSHURL "a split pushurl with GIT_CONFIG=/dev/null in the environment (exit 2, nothing touched)" 2
+
+git -C "$C" config --unset-all remote.origin.pushurl
+git -C "$C" config --add remote.origin.pushurl "$O"
+git -C "$C" config --add remote.origin.pushurl "$O"
+run_release -- --yes "$T1"
+ok=1
+if [ "$RC" -eq 0 ] && [ -n "$(git -C "$C" rev-parse -q --verify "refs/tags/rel-$T1_8" || true)" ] \
+  && [ "$(git -C "$O" rev-parse -q --verify "refs/tags/rel-$T1_8" || true)" = "$(git -C "$C" rev-parse -q --verify "refs/tags/rel-$T1_8" || true)" ]; then ok=0; fi
+report INFRA-023/PUSHURL "two pushurls both equal to the url are not refused (exit 0, origin holds rel-<T1_8>)" \
+  "$ok" "exit $RC; stdout: $OUT; stderr: $ERR"
+report INFRA-023/PUSHURL "two equal pushurls: the other repository's refs are unchanged" \
+  "$([ "$(elsewhere_refs)" = "$ELSEWHERE_BEFORE" ] && echo 0 || echo 1)" "the other repository's refs changed"
+
+# =====================================================================================
+# REFSPEC (INFRA-023): no remote.origin.push refspec remaps a push
+# =====================================================================================
+hijack_refspecs() {
+  git -C "$C" config --add remote.origin.push '+refs/heads/main:refs/heads/hijack'
+  git -C "$C" config --add remote.origin.push '+refs/tags/*:refs/tags/hijack/*'
+}
+# landed_unhijacked: origin's main is local HEAD, origin's rel-<T1_8> is the local tag
+# object, and no origin ref name contains "hijack".
+landed_unhijacked() {
+  local tag_obj
+  tag_obj="$(git -C "$C" rev-parse -q --verify "refs/tags/rel-$T1_8" || true)"
+  [ -n "$tag_obj" ] \
+    && [ "$(git -C "$O" rev-parse -q --verify refs/heads/main || true)" = "$(git -C "$C" rev-parse HEAD)" ] \
+    && [ "$(git -C "$O" rev-parse -q --verify "refs/tags/rel-$T1_8" || true)" = "$tag_obj" ] \
+    && ! git -C "$O" for-each-ref --format='%(refname)' | grep -qF hijack
+}
+
+new_case
+hijack_refspecs
+run_release -- --yes "$T1"
+ok=1
+if [ "$RC" -eq 0 ] && landed_unhijacked; then ok=0; fi
+report INFRA-023/REFSPEC "the release's own push with hijacking remote.origin.push refspecs (exit 0, origin's main and rel-<T1_8> equal the local ones, no hijack ref)" \
+  "$ok" "exit $RC; origin refs: $(git -C "$O" for-each-ref --format='%(refname)' | tr '\n' ' ')"
+
+new_case
+hijack_refspecs
+printf '#!/bin/sh\nexit 1\n' > "$O/hooks/pre-receive"
+chmod +x "$O/hooks/pre-receive"
+run_release -- --yes "$T1"
+report INFRA-023/REFSPEC "push rejected with hijacking remote.origin.push refspecs (exit 17)" \
+  "$([ "$RC" -eq 17 ] && echo 0 || echo 1)" "exit $RC; stdout: $OUT; stderr: $ERR"
+rm -f "$O/hooks/pre-receive"
+PUSH_LINE="$(grep -E '^release:   git push ' <<< "$OUT" | head -n 1 || true)"
+PUSH_CMD="${PUSH_LINE#release:   }"
+# git's own output names origin's path and is not release.sh output, so it goes to its own
+# file, never to the HYGIENE capture.
+set +e
+(cd "$C" && bash -c "$PUSH_CMD") > "$WORK_DIR/printed-push.out" 2>&1
+prc=$?
+set -e
+ok=1
+if [ -n "$PUSH_CMD" ] && [ "$prc" -eq 0 ] && landed_unhijacked; then ok=0; fi
+report INFRA-023/REFSPEC "the printed exit-17 push line, run verbatim with hijacking remote.origin.push refspecs (exit 0, origin's main and rel-<T1_8> equal the local ones, no hijack ref)" \
+  "$ok" "exit $prc; line: $PUSH_LINE; origin refs: $(git -C "$O" for-each-ref --format='%(refname)' | tr '\n' ' ')"
 
 # =====================================================================================
 # HYGIENE

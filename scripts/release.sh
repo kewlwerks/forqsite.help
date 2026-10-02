@@ -25,6 +25,17 @@
 #   - Reads the forqsite clone named by FORQSITE_CLONE with `git -C`, every inherited GIT_*
 #     variable removed and GIT_NO_LAZY_FETCH=1, using rev-parse and for-each-ref only. It
 #     never fetches, in the clone or here.
+#   - For this repository and its siblings it unsets only the GIT_* variables that point git
+#     at another repository, and GIT_CONFIG, which would make git config read a different
+#     file from the one the push uses; every other inherited variable, GIT_CONFIG_* and
+#     GIT_SSH_COMMAND included, applies on purpose, because the push needs the operator's
+#     ssh setup, so the read-only and never-fetches claims hold only for a benign
+#     environment.
+#   - A url.<base>.pushInsteadOf rule can still send the push somewhere other than where git
+#     ls-remote reads, and the exit-2 pushurl check deliberately does not catch it: fetching
+#     over https and pushing over ssh to the same repository must be expressed that way,
+#     never as an explicit pushurl that differs from the url (which is refused), and that
+#     configuration is the operator's to own.
 #   - Checks the preconditions below in order; the first failure decides the exit code.
 #     Nothing is written until the restamp, except the stale-path report.
 #   - Reads origin's state from origin itself with `git ls-remote origin refs/heads/main
@@ -36,7 +47,8 @@
 #   - Checker exit 0 (the clean path): restamp.py, the selftests again, a commit of exactly
 #     docs/claims-manifest.json, index.html and gap-handoff.html, an annotated tag
 #     rel-<t8>, `deploy.sh --ref rel-<t8>`, `drift-check.sh --ref rel-<t8>`, and only after
-#     both pass, `git push --atomic origin refs/heads/main refs/tags/rel-<t8>`.
+#     both pass, `git push --atomic origin refs/heads/main:refs/heads/main
+#     refs/tags/rel-<t8>:refs/tags/rel-<t8>`.
 #     The commit message is fixed:
 #         release: <slug>@<t8>, <N> claims: <u> untouched, <h> holds, <v> unverified
 #
@@ -61,7 +73,9 @@
 #   2   configuration: FORQSITE_CLONE unset, not a directory, not a git repository or not
 #       its top level; this script not in a git work tree; deploy.sh --dry-run exits 2
 #       (deploy host or directory unset); FORQSITE_HELP_SITE_URL resolves empty; the
-#       manifest's release.repo or release.commit unreadable; or the checker exits 2
+#       manifest's release.repo or release.commit unreadable; the checker exits 2; or
+#       remote.origin.pushurl is set and any of its values differs from the first
+#       remote.origin.url, the one git ls-remote reads (neither URL is printed)
 #   7   the current branch is not main (a detached HEAD included)
 #   6   tracked changes: git status --porcelain --untracked-files=no is non-empty
 #       (untracked files do not block)
@@ -121,6 +135,14 @@
 #     (exit 10) before the "already released" test, because after a drift failure the
 #     local commit already pins the target.
 #
+#   Pushes where it reads. When remote.origin.pushurl is set, git pushes to every pushurl
+#     and never to the url, so the job refuses (exit 2), before origin is first read,
+#     unless every pushurl equals the first remote.origin.url, the one git ls-remote
+#     reads. With several remote.origin.url values and no pushurl, git pushes to every
+#     url: the first, the one git ls-remote reads, is among them, so the release is still
+#     seen there, but it also lands on the others. The push names both sides of each
+#     refspec, so no remote.origin.push refspec can map it elsewhere.
+#
 # State each failure leaves, and its exact recovery (commands run from the repo root):
 #   64 2 7 6 5 8 10 4 9 3   nothing written (3: only .release-report.txt). Fix the cause
 #                           and run again. 8: fetch and merge by hand, then run again.
@@ -138,7 +160,7 @@
 #       site may serve the release (15: partly). To finish it:
 #           scripts/deploy.sh --ref rel-<t8>
 #           scripts/drift-check.sh --ref rel-<t8>
-#           git push --atomic origin main rel-<t8>
+#           git push --atomic origin refs/heads/main:refs/heads/main refs/tags/rel-<t8>:refs/tags/rel-<t8>
 #       To abandon it (the reset precedes the redeploy, because deploy.sh refuses bundles
 #       that differ from its ref):
 #           git tag -d rel-<t8>
@@ -152,7 +174,7 @@
 #       gap-handoff.html.bak-S or site-provenance.json.bak-S: that set is incomplete and
 #       deploy.sh --rollback refuses it (exit 6), so the abandon steps apply.
 #   17  deployed and drift-checked, not pushed. To finish it:
-#           git push --atomic origin main rel-<t8>
+#           git push --atomic origin refs/heads/main:refs/heads/main refs/tags/rel-<t8>:refs/tags/rel-<t8>
 #       If origin has moved, resolve it by hand.
 #   <PRE> is HEAD before the run, printed in full. A rerun after 14, 15 or 16 refuses
 #   with 10, printing the same recovery, until the operator finishes or abandons the
@@ -238,9 +260,10 @@ DRY_RUN=1
 
 # --- This repository -------------------------------------------------------------------
 # Variables that would point git at another repository are dropped: every sibling
-# resolves the repository from the working directory, as this script does.
+# resolves the repository from the working directory, as this script does. GIT_CONFIG is
+# dropped too: it makes git config read another file than the one the push uses.
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
-  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE GIT_PREFIX
+  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE GIT_PREFIX GIT_CONFIG
 SELF_DIR="$(cd "$(dirname "$SELF")" && pwd)"
 # A relative FORQSITE_CLONE means relative to where the operator ran this, not to the
 # repository root this script changes into below.
@@ -285,7 +308,7 @@ print_finish_abandon() {
   say "to finish it:"
   say "  scripts/deploy.sh --ref ${tag}"
   say "  scripts/drift-check.sh --ref ${tag}"
-  say "  git push --atomic origin ${RELEASE_BRANCH} ${tag}"
+  say "  git push --atomic origin refs/heads/${RELEASE_BRANCH}:refs/heads/${RELEASE_BRANCH} refs/tags/${tag}:refs/tags/${tag}"
   say "to abandon it:"
   say "  git tag -d ${tag}"
   say "  git reset --keep ${pre}"
@@ -336,6 +359,18 @@ if [ -z "$SITE_URL" ] && [ -f scripts/deploy.env ]; then
 fi
 [ -n "$SITE_URL" ] \
   || fail 2 "missing configuration: set FORQSITE_HELP_SITE_URL in the environment, or in scripts/deploy.env"
+
+# --- 2: origin is pushed where it is read ---------------------------------------------------
+# git ls-remote reads the first remote.origin.url. When remote.origin.pushurl is set, git
+# pushes to every pushurl and never to the url, so one differing pushurl carries the release
+# where ls-remote never reads. git config --get returns the last value, so both keys are
+# read whole, NUL-separated. A missing key exits 1; neither URL nor git's output is printed.
+mapfile -d '' ORIGIN_URLS < <(git config -z --get-all remote.origin.url 2>/dev/null || true)
+mapfile -d '' ORIGIN_PUSHURLS < <(git config -z --get-all remote.origin.pushurl 2>/dev/null || true)
+for pushurl in "${ORIGIN_PUSHURLS[@]}"; do
+  [ "$pushurl" = "${ORIGIN_URLS[0]:-}" ] \
+    || fail 2 "remote.origin.pushurl is set and differs from remote.origin.url: the push would land where git ls-remote never reads, and every later run would refuse with 10. Run git config --unset-all remote.origin.pushurl, or make the pushurl equal to the url"
+done
 
 # --- 5: origin, read from origin (never from the remote-tracking ref) ----------------------
 rc=0
@@ -408,7 +443,7 @@ if [ -n "$NEWEST_REL" ]; then
     print_finish_abandon "$NEWEST_REL" "$head_parent"
   else
     say "stopped: ${NEWEST_REL} is not at HEAD; push it once its release is deployed and drift-checked, or delete it:"
-    say "  git push --atomic origin ${NEWEST_REL}"
+    say "  git push --atomic origin refs/tags/${NEWEST_REL}:refs/tags/${NEWEST_REL}"
     say "  git tag -d ${NEWEST_REL}"
   fi
   exit 10
@@ -691,13 +726,13 @@ fi
 
 # --- 17: push, only now -----------------------------------------------------------------------
 rc=0
-git push --atomic origin "refs/heads/${RELEASE_BRANCH}" "refs/tags/${TAG}" \
+git push --atomic origin "refs/heads/${RELEASE_BRANCH}:refs/heads/${RELEASE_BRANCH}" "refs/tags/${TAG}:refs/tags/${TAG}" \
   > "$SCRATCH/push.out" 2>&1 < /dev/null || rc=$?
 if [ "$rc" -ne 0 ]; then
   printf 'release: error: git push failed (exit %s); its own output is withheld because it names the remote\n' "$rc" >&2
   say "stopped: ${TAG} is deployed and drift-checked, but origin does not have it"
   say "to finish it:"
-  say "  git push --atomic origin ${RELEASE_BRANCH} ${TAG}"
+  say "  git push --atomic origin refs/heads/${RELEASE_BRANCH}:refs/heads/${RELEASE_BRANCH} refs/tags/${TAG}:refs/tags/${TAG}"
   say "if origin has moved meanwhile, resolve it by hand (fetch, then rebase or merge) before pushing"
   exit 17
 fi

@@ -186,7 +186,8 @@ a clean restamp against fixture repositories.
 `--latest-checkpoint`, the newest `cp-PM<n>-main` tag in the clone by version sort) is the
 attended release, run by hand on the operator's host. It is a dry run unless given `--yes`.
 It refuses, writing nothing, unless the tree is clean on `main`, the deploy configuration
-is present, and this repository is not behind origin. Origin's state is read from origin
+is present, origin is pushed where it is read (every `remote.origin.pushurl`, if any,
+equals its url), and this repository is not behind origin. Origin's state is read from origin
 itself with `git ls-remote` on every run, never from the remote-tracking ref, and the job
 never fetches. A branch ahead of origin is released, after the commits the push will
 carry are listed by subject. Then it runs the selftests and `stale-claims.py
