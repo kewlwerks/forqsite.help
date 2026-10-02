@@ -2,7 +2,7 @@
 id: INFRA-023
 rail: INFRA
 title: release.sh: test the partial-restamp recovery, state the environment, refuse a split push URL
-status: planned
+status: complete
 phase: "14-post1"
 story_class: code
 auth_gated: false
