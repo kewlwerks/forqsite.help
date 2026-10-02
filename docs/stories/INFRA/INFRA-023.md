@@ -51,7 +51,10 @@ The operator chose to run this hardening phase before Phase 15 (2026-10-01), pul
   first `remote.origin.url`, and prints neither URL.
 - Its header carries the exact `GIT_*` and `pushInsteadOf` sentences in Instruction 1.
 - Every INFRA-021 selftest case still passes.
-- `release.sh`'s code outside the new pushurl block is byte-identical to `132c462`.
+- Neither a `remote.origin.push` refspec nor `GIT_CONFIG` in the environment can send the
+  release elsewhere or hide a split pushurl. (Amended 2026-10-01 after the proving pass.)
+- `release.sh`'s code outside the new pushurl block is byte-identical to `b92ffe4`, except
+  the two exact changes in Instruction 7.
 
 ## Instructions
 
@@ -61,16 +64,25 @@ The operator chose to run this hardening phase before Phase 15 (2026-10-01), pul
    - **The `GIT_*` sentence:**
 
      > For this repository and its siblings it unsets only the GIT_* variables that point git
-     > at another repository; every other inherited variable, GIT_CONFIG_* and GIT_SSH_COMMAND
-     > included, applies on purpose, because the push needs the operator's ssh setup, so the
-     > read-only and never-fetches claims hold only for a benign environment.
+     > at another repository, and GIT_CONFIG, which would make git config read a different
+     > file from the one the push uses; every other inherited variable, GIT_CONFIG_* and
+     > GIT_SSH_COMMAND included, applies on purpose, because the push needs the operator's
+     > ssh setup, so the read-only and never-fetches claims hold only for a benign
+     > environment.
 
    - **The `pushInsteadOf` sentence** (operator ruling 2026-10-01):
 
      > A url.<base>.pushInsteadOf rule can still send the push somewhere other than where git
-     > ls-remote reads; the exit-2 pushurl check deliberately does not catch it, because
-     > fetching over https and pushing over ssh to the same repository is a valid setup, so
-     > that configuration is the operator's to own.
+     > ls-remote reads, and the exit-2 pushurl check deliberately does not catch it: fetching
+     > over https and pushing over ssh to the same repository must be expressed that way,
+     > never as an explicit pushurl that differs from the url (which is refused), and that
+     > configuration is the operator's to own.
+
+   Amended 2026-10-01 after the proving pass, for two reasons:
+   - The `GIT_*` sentence now names `GIT_CONFIG` (Instruction 7).
+   - The `pushInsteadOf` sentence no longer calls the https/ssh split "a valid setup" without
+     qualification. Written as an explicit pushurl, that split is refused, and the refusal
+     message tells the operator to make the pushurl equal to the url.
 
    The clone bullet stays true as written: clone reads still drop every `GIT_*`.
 
@@ -160,7 +172,71 @@ The operator chose to run this hardening phase before Phase 15 (2026-10-01), pul
 
    HYGIENE already fails on any work-directory path in the output.
 
-6. **CER backlog.**
+7. **Push and environment fixes (amended 2026-10-01 after the proving pass).** These are
+   the only changes allowed outside the new section, and the Tests check them byte for byte.
+   - **HIGH: explicit push refspecs.** A destination-less refspec is mapped through
+     `remote.origin.push`. With `+refs/heads/main:refs/heads/hijack` configured, the release
+     exited 0 and deployed, but origin's `main` did not move, and the next run refused with 10.
+     Replace the push line
+     `git push --atomic origin "refs/heads/${RELEASE_BRANCH}" "refs/tags/${TAG}" \`
+     with exactly this line:
+
+     ```
+     git push --atomic origin "refs/heads/${RELEASE_BRANCH}:refs/heads/${RELEASE_BRANCH}" "refs/tags/${TAG}:refs/tags/${TAG}" \
+     ```
+
+     Update the header's "What it does" push text to match. The printed recovery commands are
+     unchanged (see Out of scope).
+   - **MEDIUM: `GIT_CONFIG`.** `GIT_CONFIG` redirects `git config`, but not the push, so a
+     split pushurl went unseen. In the block that unsets the repository-redirecting variables,
+     the second comment line and the `unset` continuation line become exactly these three
+     lines:
+
+     ```
+     # resolves the repository from the working directory, as this script does. GIT_CONFIG is
+     # dropped too: it makes git config read another file than the one the push uses.
+     ```
+     ```
+       GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE GIT_PREFIX GIT_CONFIG
+     ```
+
+     The first comment line and the `unset GIT_DIR …` line are unchanged.
+   - **LOW: the exit-code table.** It is `b92ffe4`'s table, byte for byte, with one change. Row
+     2's last line,
+     `#       manifest's release.repo or release.commit unreadable; or the checker exits 2`,
+     becomes exactly these three lines:
+
+     ```
+     #       manifest's release.repo or release.commit unreadable; the checker exits 2; or
+     #       remote.origin.pushurl is set and any of its values differs from the first
+     #       remote.origin.url, the one git ls-remote reads (neither URL is printed)
+     ```
+
+     In particular, `#   7   the current branch` keeps its three spaces.
+   - **LOW: the invariant.** Under `# Invariants`, add a paragraph headed `Pushes where it reads.`
+     It may say more, but it must contain these two sentences, whitespace-normalised:
+
+     > With several remote.origin.url values and no pushurl, git pushes to every url: the
+     > first, the one git ls-remote reads, is among them, so the release is still seen there,
+     > but it also lands on the others.
+
+     > The push names both sides of each refspec, so no remote.origin.push refspec can map it
+     > elsewhere.
+
+   - **Selftest cases.**
+     - **REFSPEC** (token `INFRA-023/REFSPEC`). In a fresh case, add both
+       `+refs/heads/main:refs/heads/hijack` and `+refs/tags/*:refs/tags/hijack/*` to
+       `remote.origin.push`, then run `--yes "$T1"`. Expect:
+       - exit 0;
+       - origin's `main` equals local `HEAD`;
+       - origin's `refs/tags/rel-<T1_8>` equals the local tag object;
+       - no origin ref name contains `hijack`.
+
+       The name contains `exit 0` and `no hijack ref`.
+     - **PUSHURL, GIT_CONFIG.** A split pushurl, plus `GIT_CONFIG=/dev/null` passed through
+       `run_release`'s environment: `expect … 2`. The name contains `GIT_CONFIG` and `exit 2`.
+
+8. **CER backlog.**
    - **CER-062 and CER-064.** Append
      `**RESOLVED Phase 14-post1 — INFRA-023:** <one clause on what closed it>.`
    - **CER-061.** Append
@@ -170,6 +246,8 @@ The operator chose to run this hardening phase before Phase 15 (2026-10-01), pul
 
 **Mutations for the reviewer.** Each must turn the selftest red. Each went red on the
 prototype or is red by construction:
+- **Reverting the push line to destination-less refspecs.** REFSPEC fails.
+- **Dropping `GIT_CONFIG` from the unset.** The GIT_CONFIG PUSHURL case fails.
 - **`release.sh` as it was at `132c462`.** The four PUSHURL cases fail. The split push
   really lands on `ELSEWHERE`, and the equal case then exits 10, which reproduces
   CER-061 (4).
@@ -190,11 +268,22 @@ and the Tests block are load-bearing. Preflight may flag `T1`, `O`, `C`, `ELSEWH
 ## Tests
 
 Run from the repo root at the story's tip, as a non-root user. No real host is contacted.
-`PRE` is main at `132c462` (re-pinned when the operator's rulings were recorded; its scripts
-are byte-identical to `da5fb0c`'s).
-- **Against a clone of `PRE`,** every new check failed: all seven INFRA-023 selftest cases,
-  the pushurl block, both header sentences, row 2, architecture.md and the backlog rows.
-- **Against the prototype copy,** the block printed `docs ok` and `ALL-OK`.
+`PRE` is main at `b92ffe4`. It was re-pinned when the block was amended on 2026-10-01 after
+the proving pass, and `scripts/` is byte-identical at `da5fb0c`, `132c462`, `8adcf4e` (the
+build's base) and `b92ffe4`.
+- **Against a clone of `PRE`,** every new check failed:
+  - all nine INFRA-023 selftest cases;
+  - the pushurl block;
+  - both header sentences and the invariant;
+  - the exact exit-code table;
+  - architecture.md and the backlog rows.
+- **Against the story build `ce85268`,** the block failed in three places.
+  - The two new selftest cases, run with the build's `release.sh`, fail. The GIT_CONFIG case
+    exits 0. REFSPEC leaves `refs/heads/hijack` on origin.
+  - The table check fails on row 7's whitespace.
+  - The code check fails on the push and unset lines. Both amended sentences and the
+    invariant are missing.
+- **Against `ce85268` with this amendment applied,** the block printed `docs ok` and `ALL-OK`.
 
 Check 2 runs PRE's own selftest from a `git archive`, so a dropped INFRA-021 case cannot pass
 unnoticed.
@@ -202,7 +291,7 @@ unnoticed.
 ```bash
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
-PRE=132c462fc8233a30fe01f6d6f482e795de093abe
+PRE=b92ffe471f54bd2a6c5f221255f8694d8eac9140
 [ "$(id -u)" -ne 0 ] || { echo "FAIL: run as a non-root user (PARTIAL needs an unwritable docs/)"; exit 1; }
 S=$(mktemp -d); trap 'chmod -R u+w "$S" 2>/dev/null; rm -rf "${S:?}"' EXIT
 
@@ -212,7 +301,8 @@ tail -1 "$S/new.out" | grep -qE '^release-selftest: [0-9]+ passed, 0 failed$' ||
 if grep -q '^SKIP: .* — INFRA-023/' "$S/new.out"; then echo "FAIL: an INFRA-023 case was skipped"; exit 1; fi
 for want in 'exit 11[^—]* — INFRA-023/PARTIAL$' 'restore line — INFRA-023/PARTIAL$' 'clean tree — INFRA-023/PARTIAL$' \
   'differs from the url \(exit 2, nothing touched\) — INFRA-023/PUSHURL$' 'neither URL — INFRA-023/PUSHURL$' \
-  'two pushurls[^—]*exit 2[^—]* — INFRA-023/PUSHURL$' 'not refused[^—]*exit 0[^—]* — INFRA-023/PUSHURL$'; do
+  'two pushurls[^—]*exit 2[^—]* — INFRA-023/PUSHURL$' 'not refused[^—]*exit 0[^—]* — INFRA-023/PUSHURL$' \
+  'GIT_CONFIG[^—]*exit 2[^—]* — INFRA-023/PUSHURL$' 'exit 0[^—]*no hijack ref[^—]* — INFRA-023/REFSPEC$'; do
   grep -qE "^PASS: .*$want" "$S/new.out" || { echo "FAIL: no passing case matching: $want"; exit 1; }
 done
 
@@ -224,29 +314,55 @@ grep '^PASS: .* — INFRA-021/' "$S/new.out" | sort > "$S/new.pass"
 [ -s "$S/pre.pass" ] || { echo "FAIL: PRE's selftest produced no INFRA-021 passes"; exit 1; }
 if [ -n "$(comm -23 "$S/pre.pass" "$S/new.pass")" ]; then echo "FAIL: INFRA-021 cases lost:"; comm -23 "$S/pre.pass" "$S/new.pass"; exit 1; fi
 
-# 3. release.sh's code is PRE's plus only the pushurl block; header sentence; row 2; docs; backlog
+# 3. release.sh's code is PRE's plus the pushurl block and exactly two amended changes;
+#    the exit-code table exactly; header sentences and invariant; docs; backlog
 git show "$PRE:scripts/release.sh" > "$S/release.pre"
 bash scripts/release.sh --help > "$S/help"
 python3 - "$S/release.pre" "$S/help" <<'PY'
 import re, sys
 norm = lambda s: re.sub(r'\s+', ' ', s)
 body = lambda s: s[s.index('\nset -euo pipefail\n'):]
-new = open('scripts/release.sh').read()
+new = open('scripts/release.sh').read(); pre = open(sys.argv[1]).read()
 a = new.index('# --- 2: origin is pushed where it is read'); b = new.index('# --- 5: origin, read from origin')
 assert 'remote.origin.pushurl' in new[a:b], 'pushurl block'
-assert body(new[:a] + new[b:]) == body(open(sys.argv[1]).read()), 'code outside the pushurl block changed'
+swaps = [
+    ('# resolves the repository from the working directory, as this script does.\n',
+     '# resolves the repository from the working directory, as this script does. GIT_CONFIG is\n'
+     '# dropped too: it makes git config read another file than the one the push uses.\n'),
+    ('  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE GIT_PREFIX\n',
+     '  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE GIT_PREFIX GIT_CONFIG\n'),
+    ('git push --atomic origin "refs/heads/${RELEASE_BRANCH}" "refs/tags/${TAG}" \\\n',
+     'git push --atomic origin "refs/heads/${RELEASE_BRANCH}:refs/heads/${RELEASE_BRANCH}" "refs/tags/${TAG}:refs/tags/${TAG}" \\\n'),
+]
+want = body(pre)
+for old, rep in swaps:
+    assert want.count(old) == 1, old
+    want = want.replace(old, rep)
+assert body(new[:a] + new[b:]) == want, 'code outside the pushurl block differs from PRE plus the two amended changes'
+table = lambda s: s[s.index('\n# Exit codes'):s.index('\n# Invariants')]
+row2_old = "#       manifest's release.repo or release.commit unreadable; or the checker exits 2\n"
+row2_new = ("#       manifest's release.repo or release.commit unreadable; the checker exits 2; or\n"
+            "#       remote.origin.pushurl is set and any of its values differs from the first\n"
+            "#       remote.origin.url, the one git ls-remote reads (neither URL is printed)\n")
+assert table(pre).count(row2_old) == 1 and table(new) == table(pre).replace(row2_old, row2_new), 'exit-code table not exact'
 help_ = norm(open(sys.argv[2]).read())
 sentence = ("For this repository and its siblings it unsets only the GIT_* variables that point git at "
-            "another repository; every other inherited variable, GIT_CONFIG_* and GIT_SSH_COMMAND included, "
+            "another repository, and GIT_CONFIG, which would make git config read a different file from the "
+            "one the push uses; every other inherited variable, GIT_CONFIG_* and GIT_SSH_COMMAND included, "
             "applies on purpose, because the push needs the operator's ssh setup, so the read-only and "
             "never-fetches claims hold only for a benign environment.")
 assert sentence in help_, 'GIT_* header sentence'
 pio = ("A url.<base>.pushInsteadOf rule can still send the push somewhere other than where git ls-remote "
-       "reads; the exit-2 pushurl check deliberately does not catch it, because fetching over https and "
-       "pushing over ssh to the same repository is a valid setup, so that configuration is the operator's to own.")
+       "reads, and the exit-2 pushurl check deliberately does not catch it: fetching over https and pushing "
+       "over ssh to the same repository must be expressed that way, never as an explicit pushurl that differs "
+       "from the url (which is refused), and that configuration is the operator's to own.")
 assert pio in help_, 'pushInsteadOf header sentence'
-row2 = help_[help_.index(' 2 configuration:'):help_.index(' 7 the current branch')]
-assert 'remote.origin.pushurl' in row2, 'exit-code row 2'
+inv = help_[help_.index(' Invariants'):]
+assert ' Pushes where it reads.' in inv, 'invariant heading'
+for s in ("With several remote.origin.url values and no pushurl, git pushes to every url: the first, the one "
+          "git ls-remote reads, is among them, so the release is still seen there, but it also lands on the others.",
+          "The push names both sides of each refspec, so no remote.origin.push refspec can map it elsewhere."):
+    assert s in inv, s[:40]
 arch = open('docs/architecture.md').read(); i = arch.index('**Release job**')
 assert 'remote.origin.pushurl' in norm(arch[i:arch.index('\n\n', i)]), 'architecture Release job'
 rows = {m.group(1): m.group(0) for m in re.finditer(r'^\| (CER-06[124]) \|.*$', open('docs/cer/backlog.md').read(), re.M)}
@@ -278,6 +394,11 @@ echo ALL-OK
   By operator ruling 2026-10-01 it is stated in the header (Instruction 1), not checked.
 - **Several `remote.origin.url` values with no pushurl.** The push goes to all of them,
   including the one `ls-remote` reads, so the release is still seen.
-- Unsetting or sanitising any further inherited variable. CER-064's fix is the sentence alone.
+- Unsetting or sanitising any inherited variable beyond `GIT_CONFIG` (Instruction 7).
+- **Explicit refspecs in the printed recovery commands.** After exit 15, 16 or 17, and on the
+  exit-10 rerun, `release.sh` prints `git push --atomic origin main rel-<t8>`. Those commands
+  stay destination-less, so a `remote.origin.push` refspec still remaps them when the operator
+  runs them by hand. Changing them would change INFRA-021's asserted output, so it is left as
+  a follow-up for the operator to triage.
 - Any change to `restamp.py`, such as a fault-injection hook for PARTIAL.
 - Making PARTIAL run as root.
