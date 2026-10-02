@@ -49,7 +49,7 @@ reviewed by the operator before it is built.
 
 | ID | Title | Status |
 |----|-------|--------|
-| INFRA-022 | Deploy records the commit an annotated tag points to | planned |
+| INFRA-022 | Deploy records the commit an annotated tag points to | complete |
 | INFRA-023 | release.sh: test the partial-restamp recovery, state the environment, refuse a split push URL | planned |
 
 ## Schema delivery

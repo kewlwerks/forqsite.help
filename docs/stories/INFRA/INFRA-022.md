@@ -2,7 +2,7 @@
 id: INFRA-022
 rail: INFRA
 title: Deploy records the commit an annotated tag points to
-status: planned
+status: complete
 phase: "14-post1"
 story_class: code
 auth_gated: false
