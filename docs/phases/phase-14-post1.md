@@ -61,12 +61,19 @@ parallel, and the operator reviewed each spec before it was built.
 
 Both specs record their rulings and amendments.
 
+**INFRA-024 was added at checkpoint (2026-10-01).** The CP-14-post1 security audit passed, but
+it found a MEDIUM gap in this phase's own guarantee. The push named *where* the release goes
+but not *what* it carries, because `refs/heads/main:refs/heads/main` pushes whatever `main`
+points to at push time. The operator added INFRA-024 so the gap is fixed before the
+checkpoint, and the checkpoint gates re-run after it merges.
+
 ## Stories
 
 | ID | Title | Status |
 |----|-------|--------|
 | INFRA-022 | Deploy records the commit an annotated tag points to | complete |
 | INFRA-023 | release.sh: test the partial-restamp recovery, state the environment, refuse a split push URL | complete |
+| INFRA-024 | release.sh pushes exactly the commit and tag it deployed | planned |
 
 ## Schema delivery
 
