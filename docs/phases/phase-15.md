@@ -17,7 +17,7 @@ phase_class: production
      than one purpose, that's a signal to open a sibling phase, not to widen this one. -->
 Extend the claims manifest to the command blocks and gap-status claims no stamp covers, with forqsite evidence, and fix what that coverage finds, so the release job checks them.
 
-**Sequenced after Phase 14** (operator decision 2026-09-30), so this phase's content ships through the release job. Its new stamps and claims are also the restamp tool's first stamps it has not seen before.
+**Sequenced after Phase 14 and its hardening follow-up, Phase 14-post1** (operator decisions 2026-09-30 and 2026-10-01), so this phase's content ships through the release job. Its new stamps and claims are also the restamp tool's first stamps it has not seen before.
 
 ## Stories
 
