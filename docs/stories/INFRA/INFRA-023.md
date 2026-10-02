@@ -53,8 +53,11 @@ The operator chose to run this hardening phase before Phase 15 (2026-10-01), pul
 - Every INFRA-021 selftest case still passes.
 - Neither a `remote.origin.push` refspec nor `GIT_CONFIG` in the environment can send the
   release elsewhere or hide a split pushurl. (Amended 2026-10-01 after the proving pass.)
-- `release.sh`'s code outside the new pushurl block is byte-identical to `b92ffe4`, except
-  the two exact changes in Instruction 7.
+- Every push command `release.sh` prints names both sides of each refspec, and a printed
+  recovery push, run verbatim, is not remapped by `remote.origin.push`. (Operator ruling
+  2026-10-01.)
+- `release.sh`'s code outside the new pushurl block is byte-identical to `68c33c1`, except the
+  exact changes in Instructions 7 and 8.
 
 ## Instructions
 
@@ -185,8 +188,8 @@ The operator chose to run this hardening phase before Phase 15 (2026-10-01), pul
      git push --atomic origin "refs/heads/${RELEASE_BRANCH}:refs/heads/${RELEASE_BRANCH}" "refs/tags/${TAG}:refs/tags/${TAG}" \
      ```
 
-     Update the header's "What it does" push text to match. The printed recovery commands are
-     unchanged (see Out of scope).
+     Update the header's "What it does" push text to match. Instruction 8 covers the printed
+     recovery commands.
    - **MEDIUM: `GIT_CONFIG`.** `GIT_CONFIG` redirects `git config`, but not the push, so a
      split pushurl went unseen. In the block that unsets the repository-redirecting variables,
      the second comment line and the `unset` continuation line become exactly these three
@@ -201,7 +204,7 @@ The operator chose to run this hardening phase before Phase 15 (2026-10-01), pul
      ```
 
      The first comment line and the `unset GIT_DIR …` line are unchanged.
-   - **LOW: the exit-code table.** It is `b92ffe4`'s table, byte for byte, with one change. Row
+   - **LOW: the exit-code table.** It is `68c33c1`'s table, byte for byte, with one change. Row
      2's last line,
      `#       manifest's release.repo or release.commit unreadable; or the checker exits 2`,
      becomes exactly these three lines:
@@ -236,7 +239,48 @@ The operator chose to run this hardening phase before Phase 15 (2026-10-01), pul
      - **PUSHURL, GIT_CONFIG.** A split pushurl, plus `GIT_CONFIG=/dev/null` passed through
        `run_release`'s environment: `expect … 2`. The name contains `GIT_CONFIG` and `exit 2`.
 
-8. **CER backlog.**
+8. **Printed push commands name both refspec sides (operator ruling 2026-10-01).** A recovery
+   push the operator pastes must not be remapped by `remote.origin.push` either. Make exactly
+   these three code changes, and no others:
+
+   | Where | Line at `68c33c1` | Exact new line |
+   | --- | --- | --- |
+   | `print_finish_abandon`, used after 15 and 16 and on the exit-10 rerun when the tag is at HEAD | `  say "  git push --atomic origin ${RELEASE_BRANCH} ${tag}"` | `  say "  git push --atomic origin refs/heads/${RELEASE_BRANCH}:refs/heads/${RELEASE_BRANCH} refs/tags/${tag}:refs/tags/${tag}"` |
+   | exit 10, tag not at HEAD (pushes the tag alone) | `    say "  git push --atomic origin ${NEWEST_REL}"` | `    say "  git push --atomic origin refs/tags/${NEWEST_REL}:refs/tags/${NEWEST_REL}"` |
+   | exit 17 | `  say "  git push --atomic origin ${RELEASE_BRANCH} ${TAG}"` | `  say "  git push --atomic origin refs/heads/${RELEASE_BRANCH}:refs/heads/${RELEASE_BRANCH} refs/tags/${TAG}:refs/tags/${TAG}"` |
+
+   - **What the operator sees.** The two-ref lines print as
+     `release:   git push --atomic origin refs/heads/main:refs/heads/main refs/tags/rel-<t8>:refs/tags/rel-<t8>`.
+     The dry run's "push main and rel-<t8> to origin" is prose, not a command, and stays as it
+     is.
+   - **Header.** The two recovery lines `#           git push --atomic origin main rel-<t8>`,
+     after 15/16 and after 17, become
+     `#           git push --atomic origin refs/heads/main:refs/heads/main refs/tags/rel-<t8>:refs/tags/rel-<t8>`.
+     `--help` must contain no `git push --atomic origin main `.
+   - **INFRA-021 assertions on the old text.** Two `has` checks in `release-selftest.sh` change
+     to the new two-ref text. Their case names stay the same, so Tests check 2 still matches
+     them:
+     - DRIFT, "prints the finish and abandon steps with PRE":
+       `release:   git push --atomic origin main rel-$T1_8`.
+     - PUSH, "push rejected (exit 17), origin unchanged, release served, push step printed":
+       the same string.
+   - **New selftest case** (token `INFRA-023/REFSPEC`).
+     1. In a fresh case, configure both hijack refspecs as in Instruction 7, and install the
+        PUSH case's rejecting `pre-receive` hook in `$O`.
+     2. Run `--yes "$T1"` and expect exit 17.
+     3. Remove the hook. Take the printed `release:   git push …` line from stdout, strip the
+        `release:   ` prefix, and run it verbatim with `bash -c` in `$C`. Send that command's
+        output to its own file, not to the HYGIENE capture: it is git's own output, it
+        names origin's path, and it is not output of `release.sh`.
+     4. Expect:
+        - exit 0;
+        - origin's `main` equals local `HEAD`;
+        - origin's `refs/tags/rel-<T1_8>` equals the local tag object;
+        - no origin ref name contains `hijack`.
+
+     The name contains `printed exit-17 push line`, `exit 0` and `no hijack ref`.
+
+9. **CER backlog.**
    - **CER-062 and CER-064.** Append
      `**RESOLVED Phase 14-post1 — INFRA-023:** <one clause on what closed it>.`
    - **CER-061.** Append
@@ -248,6 +292,7 @@ The operator chose to run this hardening phase before Phase 15 (2026-10-01), pul
 prototype or is red by construction:
 - **Reverting the push line to destination-less refspecs.** REFSPEC fails.
 - **Dropping `GIT_CONFIG` from the unset.** The GIT_CONFIG PUSHURL case fails.
+- **Reverting the exit-17 printed line.** The printed-line REFSPEC case and the PUSH case fail.
 - **`release.sh` as it was at `132c462`.** The four PUSHURL cases fail. The split push
   really lands on `ELSEWHERE`, and the equal case then exits 10, which reproduces
   CER-061 (4).
@@ -268,13 +313,14 @@ and the Tests block are load-bearing. Preflight may flag `T1`, `O`, `C`, `ELSEWH
 ## Tests
 
 Run from the repo root at the story's tip, as a non-root user. No real host is contacted.
-`PRE` is main at `b92ffe4`. It was re-pinned when the block was amended on 2026-10-01 after
-the proving pass, and `scripts/` is byte-identical at `da5fb0c`, `132c462`, `8adcf4e` (the
-build's base) and `b92ffe4`.
+`PRE` is main at `68c33c1`, after INFRA-022 merged. It was re-pinned for the printed-push
+ruling (2026-10-01). `release.sh` and `release-selftest.sh` are byte-identical at `da5fb0c`,
+`132c462`, `8adcf4e` (the build's base), `b92ffe4` and `68c33c1`. INFRA-022 changed only the
+other deploy scripts.
 - **Against a clone of `PRE`,** every new check failed:
-  - all nine INFRA-023 selftest cases;
+  - all ten INFRA-023 selftest cases;
   - the pushurl block;
-  - both header sentences and the invariant;
+  - both header sentences, the invariant and the header push lines;
   - the exact exit-code table;
   - architecture.md and the backlog rows.
 - **Against the story build `ce85268`,** the block failed in three places.
@@ -283,7 +329,9 @@ build's base) and `b92ffe4`.
   - The table check fails on row 7's whitespace.
   - The code check fails on the push and unset lines. Both amended sentences and the
     invariant are missing.
-- **Against `ce85268` with this amendment applied,** the block printed `docs ok` and `ALL-OK`.
+- **Against `ce85268` merged with `68c33c1`, with every amendment and the printed-push ruling
+  applied,** the block printed `docs ok` and `ALL-OK`. With the old exit-17 printed line
+  restored, the printed-line case leaves `refs/heads/hijack` on origin.
 
 Check 2 runs PRE's own selftest from a `git archive`, so a dropped INFRA-021 case cannot pass
 unnoticed.
@@ -291,7 +339,7 @@ unnoticed.
 ```bash
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
-PRE=b92ffe471f54bd2a6c5f221255f8694d8eac9140
+PRE=68c33c18079028caa8e3b05883ccab0747efcadb
 [ "$(id -u)" -ne 0 ] || { echo "FAIL: run as a non-root user (PARTIAL needs an unwritable docs/)"; exit 1; }
 S=$(mktemp -d); trap 'chmod -R u+w "$S" 2>/dev/null; rm -rf "${S:?}"' EXIT
 
@@ -302,9 +350,12 @@ if grep -q '^SKIP: .* — INFRA-023/' "$S/new.out"; then echo "FAIL: an INFRA-02
 for want in 'exit 11[^—]* — INFRA-023/PARTIAL$' 'restore line — INFRA-023/PARTIAL$' 'clean tree — INFRA-023/PARTIAL$' \
   'differs from the url \(exit 2, nothing touched\) — INFRA-023/PUSHURL$' 'neither URL — INFRA-023/PUSHURL$' \
   'two pushurls[^—]*exit 2[^—]* — INFRA-023/PUSHURL$' 'not refused[^—]*exit 0[^—]* — INFRA-023/PUSHURL$' \
-  'GIT_CONFIG[^—]*exit 2[^—]* — INFRA-023/PUSHURL$' 'exit 0[^—]*no hijack ref[^—]* — INFRA-023/REFSPEC$'; do
+  'GIT_CONFIG[^—]*exit 2[^—]* — INFRA-023/PUSHURL$' 'printed exit-17 push line[^—]*no hijack ref[^—]* — INFRA-023/REFSPEC$'; do
   grep -qE "^PASS: .*$want" "$S/new.out" || { echo "FAIL: no passing case matching: $want"; exit 1; }
 done
+# both REFSPEC cases: the release's own push (exit 0) and the printed exit-17 line
+[ "$(grep -cE '^PASS: .*exit 0[^—]*no hijack ref[^—]* — INFRA-023/REFSPEC$|^PASS: .*no hijack ref[^—]*exit 0[^—]* — INFRA-023/REFSPEC$' "$S/new.out")" -ge 2 ] \
+  || { echo "FAIL: fewer than two passing REFSPEC cases naming exit 0 and no hijack ref"; exit 1; }
 
 # 2. every INFRA-021 case that passed at PRE still passes (PRE's own selftest, run from an archive)
 mkdir "$S/pre"; git archive "$PRE" | tar -x -C "$S/pre"; git -C "$S/pre" init -q
@@ -333,6 +384,12 @@ swaps = [
      '  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE GIT_PREFIX GIT_CONFIG\n'),
     ('git push --atomic origin "refs/heads/${RELEASE_BRANCH}" "refs/tags/${TAG}" \\\n',
      'git push --atomic origin "refs/heads/${RELEASE_BRANCH}:refs/heads/${RELEASE_BRANCH}" "refs/tags/${TAG}:refs/tags/${TAG}" \\\n'),
+    ('  say "  git push --atomic origin ${RELEASE_BRANCH} ${tag}"\n',
+     '  say "  git push --atomic origin refs/heads/${RELEASE_BRANCH}:refs/heads/${RELEASE_BRANCH} refs/tags/${tag}:refs/tags/${tag}"\n'),
+    ('    say "  git push --atomic origin ${NEWEST_REL}"\n',
+     '    say "  git push --atomic origin refs/tags/${NEWEST_REL}:refs/tags/${NEWEST_REL}"\n'),
+    ('  say "  git push --atomic origin ${RELEASE_BRANCH} ${TAG}"\n',
+     '  say "  git push --atomic origin refs/heads/${RELEASE_BRANCH}:refs/heads/${RELEASE_BRANCH} refs/tags/${TAG}:refs/tags/${TAG}"\n'),
 ]
 want = body(pre)
 for old, rep in swaps:
@@ -357,6 +414,8 @@ pio = ("A url.<base>.pushInsteadOf rule can still send the push somewhere other 
        "over ssh to the same repository must be expressed that way, never as an explicit pushurl that differs "
        "from the url (which is refused), and that configuration is the operator's to own.")
 assert pio in help_, 'pushInsteadOf header sentence'
+assert 'git push --atomic origin main ' not in help_, 'header still prints a destination-less push'
+assert help_.count('git push --atomic origin refs/heads/main:refs/heads/main refs/tags/rel-<t8>:refs/tags/rel-<t8>') >= 2, 'header recovery push lines'
 inv = help_[help_.index(' Invariants'):]
 assert ' Pushes where it reads.' in inv, 'invariant heading'
 for s in ("With several remote.origin.url values and no pushurl, git pushes to every url: the first, the one "
@@ -395,10 +454,5 @@ echo ALL-OK
 - **Several `remote.origin.url` values with no pushurl.** The push goes to all of them,
   including the one `ls-remote` reads, so the release is still seen.
 - Unsetting or sanitising any inherited variable beyond `GIT_CONFIG` (Instruction 7).
-- **Explicit refspecs in the printed recovery commands.** After exit 15, 16 or 17, and on the
-  exit-10 rerun, `release.sh` prints `git push --atomic origin main rel-<t8>`. Those commands
-  stay destination-less, so a `remote.origin.push` refspec still remaps them when the operator
-  runs them by hand. Changing them would change INFRA-021's asserted output, so it is left as
-  a follow-up for the operator to triage.
 - Any change to `restamp.py`, such as a fault-injection hook for PARTIAL.
 - Making PARTIAL run as root.
