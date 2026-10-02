@@ -42,8 +42,24 @@ them into Phase 15's coverage work. The phase is numbered `14-post1` so that eve
 
 ## Story ordering
 
-INFRA-022 and INFRA-023 touch different scripts and can run in parallel. Each spec is
-reviewed by the operator before it is built.
+INFRA-022 and INFRA-023 touch different scripts. Their specs and first builds ran in
+parallel, and the operator reviewed each spec before it was built.
+
+**What happened (2026-10-01).** Both stories had a fable proving pass before review.
+- **INFRA-022.** The proving pass returned PROVEN. Before the build, the operator widened the
+  story so that each script resolves the ref once and reads everything through that sha. A
+  ref that names no commit is refused. `make-provenance.sh --commit` was added so that the
+  sidecar step does not resolve the ref a second time.
+- **INFRA-023.** The proving pass found a HIGH (a configured `remote.origin.push` refspec
+  redirected the release) and a MEDIUM (`GIT_CONFIG` hid a split pushurl). The spec was
+  amended to use explicit `src:dst` refspecs and to unset `GIT_CONFIG`. That turned CER-064's
+  "header sentence, no code change" into a code change. The operator then widened the story so
+  that every printed recovery push is two-sided as well.
+- **The INFRA-023 rebuild.** By then the first INFRA-023 build (`ce85268`) conflicted with
+  main in the backlog, so it was discarded unmerged. The story was rebuilt fresh as `ce946fa`
+  on main after INFRA-022 merged.
+
+Both specs record their rulings and amendments.
 
 ## Stories
 
@@ -65,9 +81,17 @@ this phase, record the management surface before the phase is checkpointed.
 
 ### CP-14-post1 Cold-eyes checklist
 
-- [ ] written-never-read — does anything this phase persists have no reader?
-- [ ] required-never-written — does any read path depend on a value no writer produces?
-- [ ] duplicate state — is any fact now stored twice with independent writers?
-- [ ] half-implementation — is any branch unreachable, or any producer without its consumer?
+- [x] written-never-read — none new. The sidecar's `repo_ref` is published for people, as
+  before. The printed recovery pushes are read by the operator, and a selftest runs them
+  verbatim.
+- [x] required-never-written — none. Each script resolves its ref once, before that value is
+  read. `deploy.sh` supplies `make-provenance.sh --commit`.
+- [x] duplicate state — one instance, accepted. A direct caller of `make-provenance.sh` can
+  supply `repo_ref` and `repo_commit` independently, with no cross-check (CER-065, by
+  ruling). `deploy.sh` derives both from one resolution.
+- [x] half-implementation — none unstated. The pushurl check deliberately does not cover
+  `pushInsteadOf`, and the partial-write selftest SKIPs under root. Both are stated in the
+  header and ruled. The live sidecar keeps naming the tag object `60fd0cf` until the second
+  release redeploys it. That release's drift check should show the sidecar naming a commit.
 
-— developer fills in after phase completion —
+Filled 2026-10-01 at checkpoint, from the intent and docs gates.

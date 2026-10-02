@@ -332,6 +332,9 @@ other deploy scripts.
 - **Against `ce85268` merged with `68c33c1`, with every amendment and the printed-push ruling
   applied,** the block printed `docs ok` and `ALL-OK`. With the old exit-17 printed line
   restored, the printed-line case leaves `refs/heads/hijack` on origin.
+- **Build history.** The story build `ce85268` was discarded unmerged, because it conflicted
+  with main in the backlog after INFRA-022 merged and both amendments had changed the spec.
+  The story was rebuilt fresh from the amended spec as `ce946fa`, on main after `4b3b8e6`.
 
 Check 2 runs PRE's own selftest from a `git archive`, so a dropped INFRA-021 case cannot pass
 unnoticed.
