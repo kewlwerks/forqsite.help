@@ -49,22 +49,34 @@ The operator chose to run this hardening phase before Phase 15 (2026-10-01), pul
   the printed restore line, and a clean tree after running that line.
 - `release.sh` refuses with exit 2 whenever any `remote.origin.pushurl` value differs from the
   first `remote.origin.url`, and prints neither URL.
-- Its header carries the exact `GIT_*` sentence in Instruction 1.
+- Its header carries the exact `GIT_*` and `pushInsteadOf` sentences in Instruction 1.
 - Every INFRA-021 selftest case still passes.
-- `release.sh`'s code outside the new pushurl block is byte-identical to `da5fb0c`.
+- `release.sh`'s code outside the new pushurl block is byte-identical to `132c462`.
 
 ## Instructions
 
-1. **CER-064: the header sentence, no code change.** In `release.sh`'s "What it does" list,
-   directly after the bullet about reading the forqsite clone, add one bullet. Its text,
-   whitespace-normalised, is exactly:
+1. **CER-064: two header sentences, no code change.** In `release.sh`'s "What it does" list,
+   directly after the bullet about reading the forqsite clone, add two bullets, in this
+   order. Each text, whitespace-normalised, is exactly as given.
+   - **The `GIT_*` sentence:**
 
-   > For this repository and its siblings it unsets only the GIT_* variables that point git
-   > at another repository; every other inherited variable, GIT_CONFIG_* and GIT_SSH_COMMAND
-   > included, applies on purpose, because the push needs the operator's ssh setup, so the
-   > read-only and never-fetches claims hold only for a benign environment.
+     > For this repository and its siblings it unsets only the GIT_* variables that point git
+     > at another repository; every other inherited variable, GIT_CONFIG_* and GIT_SSH_COMMAND
+     > included, applies on purpose, because the push needs the operator's ssh setup, so the
+     > read-only and never-fetches claims hold only for a benign environment.
+
+   - **The `pushInsteadOf` sentence** (operator ruling 2026-10-01):
+
+     > A url.<base>.pushInsteadOf rule can still send the push somewhere other than where git
+     > ls-remote reads; the exit-2 pushurl check deliberately does not catch it, because
+     > fetching over https and pushing over ssh to the same repository is a valid setup, so
+     > that configuration is the operator's to own.
 
    The clone bullet stays true as written: clone reads still drop every `GIT_*`.
+
+   **Operator ruling 2026-10-01: pushInsteadOf.** Instruction 2's check compares the
+   configured URL text and does not resolve `pushInsteadOf`. The header sentence above states
+   that gap instead.
 
 2. **CER-061 (4): the pushurl precondition, exit 2.**
    - **Exit code.** No new code. Exit 2 is already the configuration refusal, and a split push
@@ -119,6 +131,10 @@ The operator chose to run this hardening phase before Phase 15 (2026-10-01), pul
      - print `SKIP: … — INFRA-023/PARTIAL — <reason>`, and never PASS or FAIL.
 
      The probe tests the precondition itself rather than the uid.
+
+     **Operator ruling 2026-10-01: root.** The SKIP is acceptable. Run as root,
+     `release.sh`'s own pre-release selftest gate passes with PARTIAL skipped. Only this
+     story's Tests block refuses root.
    - **Otherwise,** run `--yes "$T1"` and assert:
      - exit 11;
      - stderr contains `restamp.py exited 5`;
@@ -154,7 +170,7 @@ The operator chose to run this hardening phase before Phase 15 (2026-10-01), pul
 
 **Mutations for the reviewer.** Each must turn the selftest red. Each went red on the
 prototype or is red by construction:
-- **`release.sh` as it was at `da5fb0c`.** The four PUSHURL cases fail. The split push
+- **`release.sh` as it was at `132c462`.** The four PUSHURL cases fail. The split push
   really lands on `ELSEWHERE`, and the equal case then exits 10, which reproduces
   CER-061 (4).
 - **Exit 11 always printing "wrote nothing".** PARTIAL's restore-line and clean-tree cases
@@ -174,9 +190,10 @@ and the Tests block are load-bearing. Preflight may flag `T1`, `O`, `C`, `ELSEWH
 ## Tests
 
 Run from the repo root at the story's tip, as a non-root user. No real host is contacted.
-`PRE` is main at `da5fb0c`.
+`PRE` is main at `132c462` (re-pinned when the operator's rulings were recorded; its scripts
+are byte-identical to `da5fb0c`'s).
 - **Against a clone of `PRE`,** every new check failed: all seven INFRA-023 selftest cases,
-  the pushurl block, the header sentence, row 2, architecture.md and the backlog rows.
+  the pushurl block, both header sentences, row 2, architecture.md and the backlog rows.
 - **Against the prototype copy,** the block printed `docs ok` and `ALL-OK`.
 
 Check 2 runs PRE's own selftest from a `git archive`, so a dropped INFRA-021 case cannot pass
@@ -185,7 +202,7 @@ unnoticed.
 ```bash
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
-PRE=da5fb0cecedbf7526c50fbbd3a4adfaf58a57ee2
+PRE=132c462fc8233a30fe01f6d6f482e795de093abe
 [ "$(id -u)" -ne 0 ] || { echo "FAIL: run as a non-root user (PARTIAL needs an unwritable docs/)"; exit 1; }
 S=$(mktemp -d); trap 'chmod -R u+w "$S" 2>/dev/null; rm -rf "${S:?}"' EXIT
 
@@ -224,6 +241,10 @@ sentence = ("For this repository and its siblings it unsets only the GIT_* varia
             "applies on purpose, because the push needs the operator's ssh setup, so the read-only and "
             "never-fetches claims hold only for a benign environment.")
 assert sentence in help_, 'GIT_* header sentence'
+pio = ("A url.<base>.pushInsteadOf rule can still send the push somewhere other than where git ls-remote "
+       "reads; the exit-2 pushurl check deliberately does not catch it, because fetching over https and "
+       "pushing over ssh to the same repository is a valid setup, so that configuration is the operator's to own.")
+assert pio in help_, 'pushInsteadOf header sentence'
 row2 = help_[help_.index(' 2 configuration:'):help_.index(' 7 the current branch')]
 assert 'remote.origin.pushurl' in row2, 'exit-code row 2'
 arch = open('docs/architecture.md').read(); i = arch.index('**Release job**')
@@ -253,9 +274,8 @@ echo ALL-OK
 ## Out of scope
 
 - CER-061 items (1) to (3) and CER-060. They stay in Do Later.
-- **`url.<base>.pushInsteadOf` with no pushurl.** It can split push from fetch too, but it is
-  not checked, because it is commonly used to reach the same repository over another
-  transport. This is an open question for the operator.
+- **Detecting `url.<base>.pushInsteadOf` with no pushurl.** It can split push from fetch too.
+  By operator ruling 2026-10-01 it is stated in the header (Instruction 1), not checked.
 - **Several `remote.origin.url` values with no pushurl.** The push goes to all of them,
   including the one `ls-remote` reads, so the release is still seen.
 - Unsetting or sanitising any further inherited variable. CER-064's fix is the sentence alone.
