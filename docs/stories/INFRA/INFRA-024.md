@@ -50,9 +50,13 @@ Out of scope: the `pushInsteadOf` gap. It is stated and ruled (INFRA-023).
 
 **Settled details (spec-writer, 2026-10-01).**
 - `RELEASE_COMMIT` stays where it is (`git rev-parse HEAD` straight after the commit), because
-  the three-file check and `git tag` already use it. The new `TAG_OBJECT` is read right after
-  `git tag` succeeds.
-- **One new exit, 18.** It is used at three points, and nothing is pushed at any of them.
+  the three-file check and `git tag` already use it. It is now checked right there: its only
+  parent must be `PRE` (operator ruling 3). The new `TAG_OBJECT` is read right after `git tag`
+  succeeds.
+- **One new exit, 18.** It is used at four points, and nothing is pushed at any of them. The
+  parent check reuses 18, not 13. Exit 13 means the commit itself went wrong. Here the commit
+  was made, and something committed on top of it, so HEAD names another commit, which is what
+  18 means everywhere else.
 - **Printed pushes carry shas, not names.** Names do not help with the hijack case: since
   INFRA-023 both sides of every refspec are explicit, so no `remote.origin.push` can remap
   either form. Names fail the moved-ref case. A recovery line is often run minutes or days
@@ -62,20 +66,24 @@ Out of scope: the `pushInsteadOf` gap. It is stated and ruled (INFRA-023).
 - **The cost of sha lines.** Suppose the operator abandons the release and then runs the
   finish line anyway. The sha line would still re-create `rel-<t8>` on origin, where a named
   line would fail. That is not silent: the next run refuses with 8 ("origin has tag …, which
-  is missing here"). See the open questions below.
+  is missing here"). Accepted by operator ruling 2.
 
-**Open questions for the operator.** The spec is buildable as written; these confirm defaults.
-1. When `main` moves during the run, the release exits 0, pushes only the release commit, and
-   prints a note. It does not exit 18. Is that the right default?
-2. A sha finish line run after an abandon re-creates `rel-<t8>` on origin, and the next run
-   catches it with 8. Is that acceptable?
-3. A `post-commit` hook could add an empty commit before `RELEASE_COMMIT` is read. That commit
-   would pass the three-file check and be released in place of the real release commit. A
-   check that `RELEASE_COMMIT^` is `PRE` would close this. Should it be filed as a CER?
+**Operator rulings (2026-10-01).**
+1. **Accepted.** When `main` moves during the run, the job pushes only the release commit and
+   exits 0 with a note. It does not exit 18.
+2. **Accepted.** A sha finish line run after an abandon may re-create `rel-<t8>` on origin.
+   This is not silent, because the next run exits 8.
+3. **Folded in.** A `post-commit` hook could add an empty commit on top of the release commit
+   before `RELEASE_COMMIT` is read. That commit passes the three-file check. Right after
+   `RELEASE_COMMIT` is read, `release.sh` therefore checks that `RELEASE_COMMIT^` is `PRE` and
+   that `RELEASE_COMMIT` has exactly one parent. On failure it exits 18 and prints the abandon
+   step. It tags, deploys and pushes nothing (Instruction 1a).
 
 ## Requires
 
-- INFRA-023 is complete (`ce946fa`) and INFRA-022 is complete. main is at `af62731`.
+- INFRA-023 is complete (`ce946fa`) and INFRA-022 is complete.
+- main is at `a9365a5`, this spec's own commit. `scripts/` is unchanged since `af62731`, so the
+  pin stays `af62731`.
 - git 2.28 or later, because one selftest case uses the `reference-transaction` hook. The
   prototype ran on git 2.43.
 
@@ -84,6 +92,8 @@ Out of scope: the `pushInsteadOf` gap. It is stated and ruled (INFRA-023).
 - The job's push, and every push line it prints, sends the release commit and the tag object
   `git tag` made, both by full sha, to fully qualified destinations.
 - `release.sh` exits 18 and pushes nothing in each of these cases:
+  - right after `git commit`, HEAD is not a commit whose only parent is `PRE`. Nothing is
+    tagged or deployed;
   - right after `git tag`, `rel-<t8>` is not an annotated tag of the release commit;
   - `deploy.sh`'s `deployed` line is missing, repeated, or names another commit;
   - `drift-check.sh`'s `ref` line is missing, repeated, or names another commit.
@@ -94,6 +104,26 @@ Out of scope: the `pushInsteadOf` gap. It is stated and ruled (INFRA-023).
   `af62731`, except for the swaps listed in the Tests block.
 
 ## Instructions
+
+1a. **Check the release commit's parent (`release.sh`, operator ruling 3).** Insert this block
+   directly after `RELEASE_COMMIT="$(git rev-parse HEAD)"`, before the three-file check. It is
+   one of the `code_swaps` in the Tests block, so the text must be exact:
+
+   ```
+   if [ "$(git rev-parse -q --verify "${RELEASE_COMMIT}^1" 2>/dev/null || true)" != "$PRE" ] \
+     || git rev-parse -q --verify "${RELEASE_COMMIT}^2" > /dev/null 2>&1; then
+     printf 'release: error: right after git commit, HEAD %s is not a commit whose only parent is %s\n' "$RELEASE_COMMIT" "$PRE" >&2
+     say "stopped: something committed after the release commit; nothing was tagged, deployed or pushed"
+     say "to abandon it:"
+     say "  git reset --keep ${PRE}"
+     exit 18
+   fi
+   ```
+
+   A root commit fails the first test and a merge commit fails the second. When the check
+   fails, the next run refuses with 10, because `release.commit` already pins the target and no
+   tag exists. That refusal prints the existing "find that commit" line, because HEAD's subject
+   is not the release subject.
 
 1. **Capture and check the tag (`release.sh`).** Add three sections. Each one's first line
    begins `# --- 18: `. Each section is cut at the next `# --- ` header, so it must sit
@@ -190,10 +220,12 @@ Out of scope: the `pushInsteadOf` gap. It is stated and ruled (INFRA-023).
      <RC>:refs/heads/main <TAGOBJ>:refs/tags/rel-<t8>`, where <RC> is the release commit
      and <TAGOBJ> the tag object git tag made, both by sha."
    - **New invariant.** After "Pushes where it reads.", add a paragraph headed
-     `Pushes exactly what it deployed.` with the two sentences the Tests block asserts.
+     `Pushes exactly what it deployed.` with the three sentences the Tests block asserts. The
+     first is the parent rule from Instruction 1a.
    - **Recovery section.** Its 15/16 and 17 push lines become
      `git push --atomic origin <RC>:refs/heads/main <TAGOBJ>:refs/tags/rel-<t8>`. Add an `18`
-     entry with two cases:
+     entry with three cases:
+     - stopped right after `git commit`: abandon with `git reset --keep <PRE>`;
      - stopped right after `git tag`: abandon with `git tag -d rel-<t8>` and
        `git reset --keep <PRE>`;
      - stopped after the deploy or the drift check: run
@@ -222,6 +254,14 @@ Out of scope: the `pushInsteadOf` gap. It is stated and ruled (INFRA-023).
      `git -C $C commit --allow-empty`. Expect exit 0. Origin's main is `rel-<T1_8>^{commit}`,
      which is local `main^`. The mid-run commit is absent from origin
      (`cat-file -e` fails there). The note is printed.
+   - **post-commit hook's empty commit** (operator ruling 3). Add a `.git/hooks/post-commit`
+     hook in `$C` that runs `git commit -q --allow-empty` once. An environment guard stops the
+     nested commit from re-running it. Expect:
+     - exit 18;
+     - no ssh and no `push` in the git log, and origin unchanged;
+     - no local `rel-<T1_8>`;
+     - stderr has `is not a commit whose only parent is <PRE>`;
+     - stdout has `release:   git reset --keep <PRE>`.
    - **tag re-pointed in the deploy window.** The ssh hook saves the tag object, then runs
      `git tag -f -a` to point `rel-<T1_8>` at a `commit-tree` child with the same tree. Expect:
      - exit 18;
@@ -270,7 +310,8 @@ Out of scope: the `pushInsteadOf` gap. It is stated and ruled (INFRA-023).
    - **`docs/cer/backlog.md`.** Append a `CER-066` row after `CER-050`, at the end of the
      Do Now table:
      - the finding: the MEDIUM and the LOW above;
-     - closed with `**RESOLVED Phase 14-post1 — INFRA-024:** <one clause>`;
+     - closed with `**RESOLVED Phase 14-post1 — INFRA-024:** <one clause>`, naming the sha
+       push and exit 18, including the parent check;
      - Source `security-auditor (CP-14-post1)`, date `2026-10-01`, phase `14-post1`.
 
 **Mutations for the reviewer.** The prototype turned each of these red:
@@ -287,8 +328,11 @@ Out of scope: the `pushInsteadOf` gap. It is stated and ruled (INFRA-023).
 | Exit-17 line by names | INFRA-021/PUSH and the exit-17-later case |
 | Exit-10 tag-only line by name | the rerun case |
 | Drop the moved note | main-moved |
+| Drop the parent check (Instruction 1a) | the post-commit case (it exits 0 and releases the hook's commit) |
 
-With main's `release.sh`, 11 cases fail. The normal path passes, as it should.
+The drop-the-parent-check mutation was re-run on 2026-10-04: 99 passed, 1 failed, the
+post-commit case. With main's `release.sh`, 13 cases fail: the two updated INFRA-021 checks
+and 11 EXACT cases. The normal path passes, as it should.
 
 **Ideology.**
 - *Assert the invariant.* The checks compare the commit each sibling reports it acted on with
@@ -306,13 +350,14 @@ bash's own, and this story creates the other three.
 ## Tests
 
 Run from the repo root at the story's tip, as a non-root user. No real host is contacted.
-`PRE` is main's HEAD `af62731`, which is INFRA-023 merged plus the INFRA-024 plan commit.
+`PRE` is `af62731`, which is INFRA-023 merged plus the INFRA-024 plan commit. main is now
+`a9365a5`, which is this spec's own commit. `scripts/` is unchanged between the two, so the
+pin holds.
 
-On 2026-10-01 the spec-writer ran the block twice:
-- **Against a clone of `PRE`:** it failed at check 1 (no INFRA-024 case), and check 3 failed
-  on its first assertion.
-- **Against a prototype clone with Instructions 1 to 5 applied:** it printed `docs ok` and
-  `ALL-OK`, with the selftest at 99 passed, 0 failed.
+On 2026-10-04, after the rulings were folded in, the spec-writer ran the block twice:
+- **Against a clone of main (`a9365a5`):** it failed at check 1 (no INFRA-024 case).
+- **Against a prototype clone with Instructions 1a to 5 applied:** it printed `docs ok` and
+  `ALL-OK`, with the selftest at 100 passed, 0 failed.
 
 No check scans whole `git diff` lines. Check 4 uses `--word-diff`.
 
@@ -331,7 +376,8 @@ for want in 'normal path \(exit 0\)' 'commit added to main in the deploy window 
   'rerun after exit 18 refuses as unfinished \(exit 10' 'rerun after exit 18 prints the tag-only push by sha' \
   'printed exit-18 update-ref and finish lines' "re-pointed before the deploy resolves it is caught by the deploy's deployed line \(exit 18" \
   'repeated deployed line is no single commit \(exit 18' 're-pointed after the drift check passed' \
-  're-pointed as git tag writes it \(exit 18' 'printed exit-17 push line, run after main and rel-<T1_8> moved'; do
+  're-pointed as git tag writes it \(exit 18' 'printed exit-17 push line, run after main and rel-<T1_8> moved' \
+  "post-commit hook's empty commit on top of the release commit is refused \(exit 18"; do
   grep -qE "^PASS: .*${want}[^—]* — INFRA-024/EXACT$" "$S/new.out" || { echo "FAIL: no passing case matching: $want"; exit 1; }
 done
 
@@ -393,16 +439,27 @@ code_swaps = [
      'if [ "$(git rev-parse -q --verify "refs/heads/${RELEASE_BRANCH}" 2>/dev/null || true)" != "$RELEASE_COMMIT" ]; then\n'
      '  say "note: ${RELEASE_BRANCH} moved during the run; origin\'s ${RELEASE_BRANCH} is the release commit ${RELEASE_COMMIT}, and what came after it stays local"\n'
      'fi\nexit 0\n', 1),
+    ('RELEASE_COMMIT="$(git rev-parse HEAD)"\n',
+     'RELEASE_COMMIT="$(git rev-parse HEAD)"\n'
+     'if [ "$(git rev-parse -q --verify "${RELEASE_COMMIT}^1" 2>/dev/null || true)" != "$PRE" ] \\\n'
+     '  || git rev-parse -q --verify "${RELEASE_COMMIT}^2" > /dev/null 2>&1; then\n'
+     '  printf \'release: error: right after git commit, HEAD %s is not a commit whose only parent is %s\\n\' "$RELEASE_COMMIT" "$PRE" >&2\n'
+     '  say "stopped: something committed after the release commit; nothing was tagged, deployed or pushed"\n'
+     '  say "to abandon it:"\n'
+     '  say "  git reset --keep ${PRE}"\n'
+     '  exit 18\n'
+     'fi\n', 1),
 ]
 assert body(cut) == swapped(body(pre), code_swaps), 'release.sh code outside the 18 sections differs from PRE plus the swaps'
 
 # the exit-code table: PRE's, plus row 18 after row 16
 table = lambda s: s[s.index('\n# Exit codes'):s.index('\n# Invariants')]
 row16 = "#   16  drift-check.sh fails (its code is printed)\n"
-row18 = ("#   18  the release names another commit (checked after 14, after 15 and after 16 pass, so\n"
-         "#       it can precede 15, 16 and 17): right after git tag, rel-<t8> is not an annotated\n"
-         "#       tag of the release commit; or deploy.sh's deployed line or drift-check.sh's ref\n"
-         "#       line is missing, repeated or names another commit\n")
+row18 = ("#   18  the release names another commit (checked right after git commit, and after 14, 15\n"
+         "#       and 16 pass): HEAD right after git commit is not a commit whose only parent is\n"
+         "#       <PRE>; right after git tag, rel-<t8> is not an annotated tag of the release commit;\n"
+         "#       or deploy.sh's deployed line or drift-check.sh's ref line is missing, repeated or\n"
+         "#       names another commit\n")
 assert table(pre).count(row16) == 1 and table(new) == table(pre).replace(row16, row16 + row18), 'exit-code table not exact'
 
 # the header, as --help prints it
@@ -412,6 +469,8 @@ assert help_.count('git push --atomic origin <RC>:refs/heads/main <TAGOBJ>:refs/
 assert 'git update-ref refs/tags/rel-<t8> <TAGOBJ>' in help_, 'header 18 recovery'
 inv = help_[help_.index(' Invariants'):]
 for s in (" Pushes exactly what it deployed.",
+          "The release commit is HEAD right after git commit and must have <PRE> as its only parent, so a "
+          "commit a hook adds there is refused with 18.",
           "The push sends the release commit and the tag object by sha, so a commit that lands on main, or a tag "
           "moved, after the tag is made is pushed neither by this job nor by the recovery line its stop prints.",
           "Before the push, deploy.sh's deployed line and drift-check.sh's ref line must each name the release "
@@ -473,8 +532,8 @@ echo ALL-OK
 - **A tag moved after the drift check passed.** The push still sends `TAG_OBJECT`, and that is
   tested. The local tag then differs from origin's, and the next run refuses with 8. There is
   no extra pre-push re-check of the local ref.
-- **A post-commit hook that adds a commit before `RELEASE_COMMIT` is read.** See open
-  question 3 in Context. Any change to how `RELEASE_COMMIT` is captured is out of scope.
+- **Moving where `RELEASE_COMMIT` is read.** Operator ruling 3 is enforced by the parent check
+  in Instruction 1a. The read itself stays where it is.
 - **The exit-10 rerun.** It still prints its recovery from what HEAD and the tag name at the
   rerun. It does not remember the original run's shas.
 - **No rollback lines on an 18 stop.** The finish and abandon steps both redeploy.
