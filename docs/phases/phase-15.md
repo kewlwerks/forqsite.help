@@ -3,7 +3,7 @@ era: "001"
 phase_class: production
 ---
 
-# forqsite.help — Phase 15: Bring the unstamped command blocks under the claims manifest
+# forqsite.help — Phase 15: Keep the published docs correct: fix reader-facing errors, then release against current forqsite
 
 ← [Phase 14: Release from a forqsite checkpoint tag: harden, restamp, release](phase-14.md)
 
@@ -12,18 +12,37 @@ phase_class: production
      belongs in docs/stories/<RAIL>/<ID>.md — not here. -->
 ## Goal
 
-<!-- State this phase's single purpose in one or two sentences (docs/architecture.md
-     § Phase-authoring convention, INFRA-243). If the work naturally splits into more
-     than one purpose, that's a signal to open a sibling phase, not to widen this one. -->
-Extend the claims manifest to the command blocks and gap-status claims no stamp covers, with forqsite evidence, and fix what that coverage finds, so the release job checks them.
+Fix the commands and claims a reader can get wrong today. Then reconcile the site with the
+current forqsite checkpoint and release it through the existing release job.
 
-**Sequenced after Phase 14 and its hardening follow-up, Phase 14-post1** (operator decisions 2026-09-30 and 2026-10-01), so this phase's content ships through the release job. Its new stamps and claims are also the restamp tool's first stamps it has not seen before.
+## Scope decision (operator, 2026-10-05)
+
+forqsite.help is a simple docs site, and Phases 13 to 14-post1 already built the release
+machinery it needs. The operator narrowed this phase from "extend the claims manifest to every
+command block" to two content stories and one release:
+- **In scope:**
+  - the reader-facing errors CER-048, CER-049, CER-051 and CER-059;
+  - CER-058 as a single gap-handoff entry;
+  - reviewing the claims that went stale since the `94f5c339` pin. At forqsite `origin/main`
+    on 2026-10-01 that was 5 claims, after forqsite dropped `docker-compose.yml` and added a
+    `Dockerfile`.
+- **Out of scope:** the coverage work in CER-046 and CER-056. Both move to Do Much Later. The
+  checker already guards every stamped claim, and that is enough for a site this size.
+- **Process:** content stories use one spec, a build and a review. They get no two-planner
+  drafts and no proving passes. Those stay for scripts that write to production or push.
+
+**Sequenced after Phase 14-post1.** This phase's content ships through the release job.
 
 ## Stories
 
 | ID | Title | Status |
 |----|-------|--------|
-| — | Stories to be stubbed after Phase 14 checkpoints. Inputs: CER-046 (the unstamped command blocks outside the stamped sections), CER-048 (the systemd units' EnvironmentFile line), CER-049 (the GAP-013 fix's `-o` reconciliation), CER-051 (U+200B in copy-paste blocks), CER-056 (gap-status claims outside the manifest), CER-058 (whether forqsite's admin install page is a GAP entry), CER-059 (the HTTPS-specifier pack pin on the Provider lifecycle route). | — |
+| CONTENT-041 | Fix the reader-facing command errors (zero-width spaces, systemd EnvironmentFile, GAP-013's dotenv `-o`, the HTTPS pack pin) and record the admin-page install as a gap | planned |
+| CONTENT-042 | Review the stale claims at the newest forqsite checkpoint, then release | planned |
+
+## Story ordering
+
+CONTENT-041 runs first. Its edits ship in CONTENT-042's release, so the site is released once.
 
 ## Schema delivery
 
@@ -32,7 +51,7 @@ this phase, record the management surface before the phase is checkpointed.
 
 | Object | Management surface | Exception |
 |---|---|---|
-| | | |
+| none | — | This phase adds no persistent object. |
 
 ---
 

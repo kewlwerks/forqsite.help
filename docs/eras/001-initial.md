@@ -40,5 +40,5 @@ static site that survives a forqsite outage — and track the dev→prod gap bac
 | 12 | One stamp per release: re-verify every published claim against one forqsite commit | complete |
 | 13 | Release-time reconciliation: revise the brief, then check claims against a new forqsite commit | complete |
 | 14 | Release from a forqsite checkpoint tag: harden, restamp, release | complete |
-| 15 | Bring the unstamped command blocks under the claims manifest | planned |
+| 15 | Keep the published docs correct: fix reader-facing errors, then release against current forqsite | planned |
 | 14-post1 | Release hardening before the second release | complete |
