@@ -2,7 +2,7 @@
 id: CONTENT-041
 rail: CONTENT
 title: Fix the reader-facing command errors and record the admin-page install as a gap
-status: planned
+status: complete
 phase: "15"
 story_class: content
 auth_gated: false

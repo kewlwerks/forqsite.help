@@ -37,7 +37,7 @@ command block" to two content stories and one release:
 
 | ID | Title | Status |
 |----|-------|--------|
-| CONTENT-041 | Fix the reader-facing command errors (zero-width spaces, systemd EnvironmentFile, GAP-013's dotenv `-o`, the HTTPS pack pin) and record the admin-page install as a gap | planned |
+| CONTENT-041 | Fix the reader-facing command errors (zero-width spaces, systemd EnvironmentFile, GAP-013's dotenv `-o`, the HTTPS pack pin) and record the admin-page install as a gap | complete |
 | CONTENT-042 | Review the stale claims at the newest forqsite checkpoint, then release | planned |
 
 ## Story ordering
