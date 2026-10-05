@@ -392,4 +392,61 @@ result             ok — served bytes match the ref for all 2 bundles
 
 ---
 
+## cp-14-post1
+
+**Phase:** 14-post1 — Release hardening before the second release
+**Tag command:** `git tag cp-14-post1 && git push origin main --tags`
+
+**Acceptance.** All 3 stories are complete.
+- **INFRA-022.** `make-provenance.sh`, `deploy.sh` and `drift-check.sh` each resolve the ref
+  once to its commit and read everything through that sha. A ref that names no commit is
+  refused. `make-provenance.sh --commit` is added (CER-063).
+- **INFRA-023.** `release.sh`:
+  - refuses a differing pushurl (exit 2);
+  - unsets `GIT_CONFIG`;
+  - names both sides of every refspec, on its own push and on every printed push;
+  - gains a selftest for the partial-restamp recovery (CER-062, CER-064, CER-061 item 4).
+- **INFRA-024.** Added at checkpoint for the security audit's MEDIUM finding. `release.sh` now
+  pushes the captured release commit and tag object by sha. It checks the release commit's
+  parent and refuses with exit 18 unless deploy and drift-check both report the release
+  commit (CER-066).
+
+**Proving passes.**
+- **INFRA-022.** PROVEN.
+- **INFRA-023.** The proving pass found two defects:
+  - HIGH: a `remote.origin.push` refspec redirected the release with exit 0;
+  - MEDIUM: `GIT_CONFIG` hid a split pushurl.
+
+  Both were fixed under a spec amendment. The operator then widened the story to cover the
+  printed recovery pushes. The first build was discarded because it conflicted with main,
+  and the story was rebuilt fresh.
+- **INFRA-024.** Built without a proving pass, at the operator's choice. Its reviewer ran the
+  two key attacks.
+
+**Gates.** The first full run passed security, intent and docs. Security found the MEDIUM that
+added INFRA-024. All three gates were re-run on the final tree:
+- security PASS (opus), one LOW (CER-068);
+- intent ALIGNED;
+- docs PASS, with its LOWs folded into the phase doc and backlog;
+- dark-feature-scan PASS.
+
+**Filed this phase.** CER-065, CER-066 (resolved), CER-067 and CER-068.
+
+**Not a release.** Production is unchanged since `rel-94f5c339`. The live sidecar still names
+the tag object `60fd0cf`, and the second release corrects it.
+
+**Drift check, before the tag.** The pages are byte-identical to release commit `d4c3991`.
+The check ran at the tag candidate and exited 0:
+
+```
+ref                747915ca8cfc48fe38980f52dd14253fffbd3508  747915c "cer: file CER-068 (exit-10 rerun recovery reads the tag at rerun time) from the CP-14-post1 security re-run"
+index.html          ok  13555187d07f41a16214acd3323ddf65d4bdf4cb38454b10c396e451fc083134
+gap-handoff.html    ok  78c943e5aa8d48c72deec3d15418cd2354bba58eae0608971dc03acced7ee57d
+nginx.conf          not served — bind-mounted only; no request returns its bytes, so this check cannot cover it
+provenance         claims 60fd0cf deployed 2026-10-01T23:16:52Z  (claim, not the basis of the result above)
+result             ok — served bytes match the ref for all 2 bundles
+```
+
+---
+
 _(Add a checkpoint section for each phase. Tag only after full checkpoint sequence passes.)_
