@@ -50,6 +50,12 @@ Page fixes for errors a reader can hit today, each verified against forqsite at 
    "in-product" title and the runbook's list of live documents.
 6. Fix the "Config & packs" backup wording.
 
+**Amended 2026-10-05 after review.** The build's "Config & packs" sentence said every pack could be
+fetched again. That is false for a `file:` install, which forqsite's own install page still
+prints (GAP-015). The sentence now covers both cases and says nothing about the store's
+durability. The backup caption also now says where the dump comes from when the shell's value
+wins.
+
 Length: about 250 lines, above the 150 target. A builder needs the exact text of each edit, and
 the operator asked for a check block.
 
@@ -84,11 +90,12 @@ same with `12.5px`. Each "before" occurs exactly once.
      becomes `For production, forqsite's first-run guide says to move these values into your process manager or container environment instead; the systemd units on Process supervision load M(.env.local) as written.`
    - Backup & recovery (CER-049): change all 4 occurrences of `dotenv -o -e .env.local` to
      `dotenv -e .env.local`. In the backup caption, `M(-o) makes the file win over anything already exported in the shell.`
-     becomes `As in forqsite's own scripts, a value already exported in the shell wins over the file.`
-     In the restore caption, `names in M(DATABASE_URL), and the name you type`
+     becomes `As in forqsite's own scripts, a value already exported in the shell wins over the file, and the dump then comes from that database instead.`
+     (The second clause was added on 2026-10-05 after review.) In the restore caption, `names in M(DATABASE_URL), and the name you type`
      becomes `names in M(DATABASE_URL) (a M(DATABASE_URL) already exported in your shell wins over it), and the name you type`.
-   - "4 — Config &amp; packs": ` and any third-party pack tarballs you installed from M5(.tgz) files. Without them a rebuilt host`
-     becomes `. Packs need no copy of their own: each is pinned by name, version and integrity in the committed M5(package.json) and M5(pnpm-lock.yaml), and M5(pnpm install --frozen-lockfile) fetches it again from the pack store. Without it a rebuilt host`.
+   - "4 — Config &amp; packs" (amended 2026-10-05 after review): ` and any third-party pack tarballs you installed from M5(.tgz) files.`
+     becomes `. A pack pinned by scoped name from the pack store needs no copy of its own, because M5(pnpm install --frozen-lockfile) fetches it again. A pack installed from a M5(file:) path, as forqsite's own install page still prints (GAP-015), has nothing to fetch it again from, so keep its tarball with the backup until it is reinstalled from the store.`
+     Leave the following `Without them a rebuilt host …` as it is. Say nothing about the store's own durability, because forqsite states nothing about it.
    - Provider lifecycle intro: `still prints the withdrawn disk install for step 2, so`
      becomes `still prints the withdrawn disk install for step 2 (<a href="gap-handoff.html#gap-015" style="font-weight:500;">GAP-015</a>), so`.
    - "Publishing a reviewed pack", step 3: `<strong>Upload</strong> to the M5(packs) bucket, keyed by the bare filename.`
@@ -156,7 +163,8 @@ generated-artifact constraint. Nothing becomes external.
 ## Tests
 
 From the repo root, run `FORQSITE_CLONE=<clone> bash <file>` with this block saved outside the
-repo. The spec-writer ran it on 2026-10-05, after the operator rulings.
+repo. The spec-writer ran it on 2026-10-05, after the operator rulings, and again after the review
+amendment, with the same results.
 - On `main` it printed 42 `FAIL:` lines and exited 1. Every evidence literal and history check
   held at the pin.
 - On a throwaway clone with Instructions 1 to 5 applied, it printed `OK` and all selftests passed.
@@ -183,9 +191,10 @@ for page, gone, now in [
     (I, 'EnvironmentFile', 'ExecStart=/usr/bin/pnpm exec dotenv -e .env.local -- tsx scripts/scheduler.ts'),
     (I, '/etc/forqsite/env', "because forqsite's dotenv calls do not pass " + M('-o') + '.'),
     (I, 'chmod 600', "forqsite's first-run guide says to move these values into your process manager or container environment instead;"),
-    (I, 'dotenv -o', "As in forqsite's own scripts, a value already exported in the shell wins over the file."),
+    (I, 'dotenv -o', "As in forqsite's own scripts, a value already exported in the shell wins over the file, and the dump then comes from that database instead."),
     (I, 'makes the file win', M('DATABASE_URL') + ' already exported in your shell wins over it)'),
-    (I, 'pack tarballs you installed from', 'Packs need no copy of their own:'),
+    (I, 'pack tarballs you installed from', 'A pack pinned by scoped name from the pack store needs no copy of its own, because ' + M('pnpm install --frozen-lockfile', '12.5px') + ' fetches it again. A pack installed from a ' + M('file:', '12.5px') + " path, as forqsite's own install page still prints (GAP-015), has nothing to fetch it again from, so keep its tarball with the backup until it is reinstalled from the store. Without them a rebuilt host"),
+    (I, 'Packs need no copy of their own', 'Back up ' + M('config/providers.json', '12.5px')),
     (I, 'keyed by the bare filename', '<strong>Upload two objects, then verify both.</strong>'),
     (I, 'pnpm add --workspace-root --save-exact', "never by the tarball's HTTPS URL, which pins without an integrity hash: " + M('pnpm add -w "@forqsite-packs/&lt;name&gt;@&lt;version&gt;"', '12.5px')),
     (I, 'Verify then pin.', 'Then run ' + M('pnpm install --frozen-lockfile', '12.5px') + ' and commit'),
