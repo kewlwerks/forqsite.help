@@ -269,6 +269,30 @@
         {
           "path": "scripts/restore.sh",
           "symbol": "psql -X -v ON_ERROR_STOP=1 \"${DATABASE_URL}\" -c \""
+        },
+        {
+          "path": "src/app/platform-admin/block-providers/install/page.tsx",
+          "symbol": "pnpm add -w file:/path/to/pack.tgz"
+        },
+        {
+          "path": "docs/operator-runbook.md",
+          "symbol": "**`pnpm add -w file:/path/to/<received-pack>.tgz` is withdrawn**"
+        },
+        {
+          "path": "docs/operator-runbook.md",
+          "symbol": "invariant I1 requires an artifact stored outside any working tree"
+        },
+        {
+          "path": "docs/operator-runbook.md",
+          "symbol": "This assertion is **not** run automatically."
+        },
+        {
+          "path": "docs/operator-runbook.md",
+          "symbol": "no record whose `artifact_url` equals this pin's tarball URL"
+        },
+        {
+          "path": "docs/operator-runbook.md",
+          "symbol": "**Three live documents state this install/pin sequence, and changing one obliges you to change all"
         }
       ],
       "stamp": "S-01",
@@ -1442,6 +1466,42 @@
       "stamp": "S-03",
       "result": "open",
       "note": "Verified at forqsite commit 1fda3228 on 2026-09-30, when this step was brought under the section's stamp; that stamp then printed 2026-09-24, the date the claims it already covered were verified. The regenerated registries are generated files that forqsite commits; the page's no source file is edited means no hand edit."
+    },
+    {
+      "id": "C-044",
+      "page": "gap-handoff.html",
+      "location": "GAP-015 entry, problem and evidence",
+      "claim": "forqsite's in-product pack install page prints pnpm add -w file:/path/to/pack.tgz, which the operator runbook withdrew (ADR 0004's invariant I1); nothing runs verify:provider-pins automatically, a file: pin cannot be bound to a review record, and the install page is not on the runbook's list of live documents that state the install sequence.",
+      "quote": "The operator runbook names that form as withdrawn",
+      "evidence": [
+        {
+          "path": "src/app/platform-admin/block-providers/install/page.tsx",
+          "symbol": "pnpm add -w file:/path/to/pack.tgz"
+        },
+        {
+          "path": "docs/operator-runbook.md",
+          "symbol": "**`pnpm add -w file:/path/to/<received-pack>.tgz` is withdrawn**"
+        },
+        {
+          "path": "docs/operator-runbook.md",
+          "symbol": "invariant I1 requires an artifact stored outside any working tree"
+        },
+        {
+          "path": "docs/operator-runbook.md",
+          "symbol": "This assertion is **not** run automatically."
+        },
+        {
+          "path": "docs/operator-runbook.md",
+          "symbol": "no record whose `artifact_url` equals this pin's tarball URL"
+        },
+        {
+          "path": "docs/operator-runbook.md",
+          "symbol": "**Three live documents state this install/pin sequence, and changing one obliges you to change all"
+        }
+      ],
+      "stamp": "S-07",
+      "result": "added",
+      "note": "ADDED: verified at the release commit on 2026-10-05."
     }
   ],
   "closed": [
