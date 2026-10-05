@@ -73,7 +73,7 @@ checkpoint, and the checkpoint gates re-run after it merges.
 |----|-------|--------|
 | INFRA-022 | Deploy records the commit an annotated tag points to | complete |
 | INFRA-023 | release.sh: test the partial-restamp recovery, state the environment, refuse a split push URL | complete |
-| INFRA-024 | release.sh pushes exactly the commit and tag it deployed | planned |
+| INFRA-024 | release.sh pushes exactly the commit and tag it deployed | complete |
 
 ## Schema delivery
 

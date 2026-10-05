@@ -2,7 +2,7 @@
 id: INFRA-024
 rail: INFRA
 title: release.sh pushes exactly the commit and tag it deployed
-status: planned
+status: complete
 phase: "14-post1"
 story_class: code
 auth_gated: false
