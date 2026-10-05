@@ -13,7 +13,7 @@ phase_class: production
 <!-- State this phase's single purpose in one or two sentences (docs/architecture.md
      § Phase-authoring convention, INFRA-243). If the work naturally splits into more
      than one purpose, that's a signal to open a sibling phase, not to widen this one. -->
-Make the release path's published provenance and its failure handling exactly true before the second release: deploy records commits, not tag objects; release.sh's partial-restamp recovery is tested; and its environment and push-target assumptions are stated or enforced.
+Make the release path's published provenance and its failure handling exactly true before the second release: deploy records commits, not tag objects; release.sh's partial-restamp recovery is tested; its environment and push-target assumptions are stated or enforced; and the push carries exactly the commit and tag that were deployed.
 
 **Parent phase:** Phase 14 (release job), complete at cp-14. This phase hardens what its first
 release exposed. It does not change Phase 14's scope.
@@ -26,6 +26,9 @@ three small release-path gaps:
 - the exit-11 partial-restamp recovery has no selftest case (CER-062);
 - the header does not state which environment variables are inherited (CER-064);
 - a split push URL makes every later run refuse (CER-061, item 4).
+
+A third story, INFRA-024 (CER-066), was added at checkpoint. The CP-14-post1 security audit
+found that the push named *where* the release goes but not *what* it carries.
 
 The next forqsite checkpoint already makes 5 claims stale, so the second release goes
 through the review path. These gaps are cheapest to close before it. On 2026-10-01 the
@@ -43,7 +46,9 @@ them into Phase 15's coverage work. The phase is numbered `14-post1` so that eve
 ## Story ordering
 
 INFRA-022 and INFRA-023 touch different scripts. Their specs and first builds ran in
-parallel, and the operator reviewed each spec before it was built.
+parallel, and the operator reviewed each spec before it was built. INFRA-024 came after both
+and depends on them: it edits the push lines INFRA-023 produced and compares against the shas
+INFRA-022 makes deploy and drift-check report.
 
 **What happened (2026-10-01).** Both stories had a fable proving pass before review.
 - **INFRA-022.** The proving pass returned PROVEN. Before the build, the operator widened the
@@ -89,16 +94,29 @@ this phase, record the management surface before the phase is checkpointed.
 ### CP-14-post1 Cold-eyes checklist
 
 - [x] written-never-read — none new. The sidecar's `repo_ref` is published for people, as
-  before. The printed recovery pushes are read by the operator, and a selftest runs them
-  verbatim.
+  before. The printed recovery pushes, including exit 18's new `git update-ref` line, are read
+  by the operator. The REFSPEC and EXACT selftests run them verbatim.
 - [x] required-never-written — none. Each script resolves its ref once, before that value is
   read. `deploy.sh` supplies `make-provenance.sh --commit`.
-- [x] duplicate state — one instance, accepted. A direct caller of `make-provenance.sh` can
-  supply `repo_ref` and `repo_commit` independently, with no cross-check (CER-065, by
-  ruling). `deploy.sh` derives both from one resolution.
-- [x] half-implementation — none unstated. The pushurl check deliberately does not cover
-  `pushInsteadOf`, and the partial-write selftest SKIPs under root. Both are stated in the
-  header and ruled. The live sidecar keeps naming the tag object `60fd0cf` until the second
-  release redeploys it. That release's drift check should show the sidecar naming a commit.
+- [x] duplicate state — two instances, both accepted.
+  - **`make-provenance.sh`.** A direct caller can supply `repo_ref` and `repo_commit`
+    independently, with no cross-check (CER-065, by ruling). `deploy.sh` derives both from
+    one resolution.
+  - **The release identity.** `release.sh` captures `RELEASE_COMMIT` and `TAG_OBJECT` once.
+    The shas that deploy and drift-check report are cross-checked against them, failing
+    closed on a missing or repeated line, so those are verified, not duplicated. The exit-10
+    rerun recomputes `NEWEST_OBJ` from the tag as it stands at the rerun, not from the
+    earlier run. That is stated in the header.
+- [x] half-implementation — none unstated. Each item below is stated in the header, ruled, or
+  filed:
+  - The pushurl check deliberately does not cover `pushInsteadOf`.
+  - The partial-write selftest SKIPs under root.
+  - A tag re-pointed after the drift check passes is still pushed as `TAG_OBJECT`. The next
+    run then refuses with exit 8. INFRA-024 puts this out of scope.
+  - A sha finish line run after an abandon re-creates `rel-<t8>` on origin. This is ruling 2,
+    and the next run exits 8.
+  - The merge-commit half of the parent check has no selftest case (CER-067).
+  - The live sidecar keeps naming the tag object `60fd0cf` until the second release
+    redeploys it. That release's drift check should show the sidecar naming a commit.
 
-Filled 2026-10-01 at checkpoint, from the intent and docs gates.
+Filled 2026-10-01 and refreshed 2026-10-04, after INFRA-024 merged and the gates re-ran.
