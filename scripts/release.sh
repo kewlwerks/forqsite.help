@@ -47,8 +47,9 @@
 #   - Checker exit 0 (the clean path): restamp.py, the selftests again, a commit of exactly
 #     docs/claims-manifest.json, index.html and gap-handoff.html, an annotated tag
 #     rel-<t8>, `deploy.sh --ref rel-<t8>`, `drift-check.sh --ref rel-<t8>`, and only after
-#     both pass, `git push --atomic origin refs/heads/main:refs/heads/main
-#     refs/tags/rel-<t8>:refs/tags/rel-<t8>`.
+#     both pass and each names the release commit, `git push --atomic origin
+#     <RC>:refs/heads/main <TAGOBJ>:refs/tags/rel-<t8>`, where <RC> is the release commit
+#     and <TAGOBJ> the tag object git tag made, both by sha.
 #     The commit message is fixed:
 #         release: <slug>@<t8>, <N> claims: <u> untouched, <h> holds, <v> unverified
 #
@@ -99,6 +100,11 @@
 #   14  git tag fails
 #   15  deploy.sh fails (its code is printed)
 #   16  drift-check.sh fails (its code is printed)
+#   18  the release names another commit (checked right after git commit, and after 14, 15
+#       and 16 pass): HEAD right after git commit is not a commit whose only parent is
+#       <PRE>; right after git tag, rel-<t8> is not an annotated tag of the release commit;
+#       or deploy.sh's deployed line or drift-check.sh's ref line is missing, repeated or
+#       names another commit
 #   17  git push fails
 #   0   released; already released (release.commit is the target and rel-<t8> exists
 #       locally); or, in a dry run, it would release
@@ -143,6 +149,14 @@
 #     seen there, but it also lands on the others. The push names both sides of each
 #     refspec, so no remote.origin.push refspec can map it elsewhere.
 #
+#   Pushes exactly what it deployed. The release commit is HEAD right after git commit and
+#     must have <PRE> as its only parent, so a commit a hook adds there is refused with 18.
+#     The push sends the release commit and the tag object by sha, so a commit that lands
+#     on main, or a tag moved, after the tag is made is pushed neither by this job nor by
+#     the recovery line its stop prints. Before the push, deploy.sh's deployed line and
+#     drift-check.sh's ref line must each name the release commit, or the job stops with
+#     18 and pushes nothing.
+#
 # State each failure leaves, and its exact recovery (commands run from the repo root):
 #   64 2 7 6 5 8 10 4 9 3   nothing written (3: only .release-report.txt). Fix the cause
 #                           and run again. 8: fetch and merge by hand, then run again.
@@ -160,7 +174,7 @@
 #       site may serve the release (15: partly). To finish it:
 #           scripts/deploy.sh --ref rel-<t8>
 #           scripts/drift-check.sh --ref rel-<t8>
-#           git push --atomic origin refs/heads/main:refs/heads/main refs/tags/rel-<t8>:refs/tags/rel-<t8>
+#           git push --atomic origin <RC>:refs/heads/main <TAGOBJ>:refs/tags/rel-<t8>
 #       To abandon it (the reset precedes the redeploy, because deploy.sh refuses bundles
 #       that differ from its ref):
 #           git tag -d rel-<t8>
@@ -174,11 +188,24 @@
 #       gap-handoff.html.bak-S or site-provenance.json.bak-S: that set is incomplete and
 #       deploy.sh --rollback refuses it (exit 6), so the abandon steps apply.
 #   17  deployed and drift-checked, not pushed. To finish it:
-#           git push --atomic origin refs/heads/main:refs/heads/main refs/tags/rel-<t8>:refs/tags/rel-<t8>
+#           git push --atomic origin <RC>:refs/heads/main <TAGOBJ>:refs/tags/rel-<t8>
 #       If origin has moved, resolve it by hand.
-#   <PRE> is HEAD before the run, printed in full. A rerun after 14, 15 or 16 refuses
-#   with 10, printing the same recovery, until the operator finishes or abandons the
-#   release. A run killed between steps (no recovery printed) is caught the same way by
+#   18  nothing pushed. Stopped right after git commit (HEAD is not a commit whose only
+#       parent is <PRE>; nothing tagged or deployed). To abandon it:
+#           git reset --keep <PRE>
+#       Stopped right after git tag (rel-<t8> is not an annotated tag of the release
+#       commit; nothing deployed). To abandon it:
+#           git tag -d rel-<t8>
+#           git reset --keep <PRE>
+#       Stopped after the deploy or the drift check (the site may serve another commit).
+#       First put the tag back where the run made it:
+#           git update-ref refs/tags/rel-<t8> <TAGOBJ>
+#       then finish or abandon it as for 15 and 16.
+#   <PRE> is HEAD before the run, <RC> the release commit and <TAGOBJ> the tag object git
+#   tag made, each printed in full. A rerun after 14, 15, 16 or 18 refuses with 10,
+#   printing the same recovery, until the operator finishes or abandons the release;
+#   after an 18 that printed the git update-ref line, run that line first, because the
+#   rerun computes its lines from what the tag names then. A run killed between steps (no recovery printed) is caught the same way by
 #   the next run: killed after the restamp and before the commit, it refuses with 6
 #   (restore the three files as for 12); killed after the commit, with 10 (no tag yet:
 #   the release commit pins the target without rel-<t8>; tag made: rel-<t8> is not on
@@ -304,11 +331,11 @@ tracked_status() {
 
 # The step-6 recovery for a stop after the tag exists (15, 16, and an unfinished release).
 print_finish_abandon() {
-  local tag="$1" pre="$2"
-  say "to finish it:"
+  local tag="$1" pre="$2" commit="$3" tagobj="$4"
+  say "to finish it (deploy.sh's deployed line and drift-check.sh's ref line must both name ${commit}):"
   say "  scripts/deploy.sh --ref ${tag}"
   say "  scripts/drift-check.sh --ref ${tag}"
-  say "  git push --atomic origin refs/heads/${RELEASE_BRANCH}:refs/heads/${RELEASE_BRANCH} refs/tags/${tag}:refs/tags/${tag}"
+  say "  git push --atomic origin ${commit}:refs/heads/${RELEASE_BRANCH} ${tagobj}:refs/tags/${tag}"
   say "to abandon it:"
   say "  git tag -d ${tag}"
   say "  git reset --keep ${pre}"
@@ -421,6 +448,7 @@ git for-each-ref --sort=-creatordate \
   --format='%(refname:strip=2) %(objectname) %(creatordate:unix)' \
   'refs/tags/rel-*' > "$SCRATCH/rel-tags"
 NEWEST_REL=""
+NEWEST_OBJ=""
 NEWEST_DATE=""
 while read -r name obj when; do
   [[ "$name" =~ $REL_TAG_RE ]] || continue
@@ -431,6 +459,7 @@ while read -r name obj when; do
   fi
   if [ "${ORIGIN_TAG[$name]:-}" != "$obj" ]; then
     NEWEST_REL="$name"
+    NEWEST_OBJ="$obj"
     break
   fi
 done < "$SCRATCH/rel-tags"
@@ -440,10 +469,10 @@ if [ -n "$NEWEST_REL" ]; then
   head_parent="$(git rev-parse -q --verify 'HEAD^' 2>/dev/null || true)"
   if [ -n "$tag_commit" ] && [ "$tag_commit" = "$(git rev-parse HEAD)" ] && [ -n "$head_parent" ]; then
     say "stopped: ${NEWEST_REL} is at HEAD and was never pushed"
-    print_finish_abandon "$NEWEST_REL" "$head_parent"
+    print_finish_abandon "$NEWEST_REL" "$head_parent" "$tag_commit" "$NEWEST_OBJ"
   else
     say "stopped: ${NEWEST_REL} is not at HEAD; push it once its release is deployed and drift-checked, or delete it:"
-    say "  git push --atomic origin refs/tags/${NEWEST_REL}:refs/tags/${NEWEST_REL}"
+    say "  git push --atomic origin ${NEWEST_OBJ}:refs/tags/${NEWEST_REL}"
     say "  git tag -d ${NEWEST_REL}"
   fi
   exit 10
@@ -661,6 +690,14 @@ if [ "$rc" -ne 0 ]; then
   exit 13
 fi
 RELEASE_COMMIT="$(git rev-parse HEAD)"
+if [ "$(git rev-parse -q --verify "${RELEASE_COMMIT}^1" 2>/dev/null || true)" != "$PRE" ] \
+  || git rev-parse -q --verify "${RELEASE_COMMIT}^2" > /dev/null 2>&1; then
+  printf 'release: error: right after git commit, HEAD %s is not a commit whose only parent is %s\n' "$RELEASE_COMMIT" "$PRE" >&2
+  say "stopped: something committed after the release commit; nothing was tagged, deployed or pushed"
+  say "to abandon it:"
+  say "  git reset --keep ${PRE}"
+  exit 18
+fi
 committed="$(git diff --name-only "$PRE" "$RELEASE_COMMIT" | sort)"
 if [ "$committed" != "$(printf '%s\n' "${RELEASE_FILES[@]}" | sort)" ]; then
   printf 'release: error: the release commit holds something other than exactly %s\n' "${RELEASE_FILES[*]}" >&2
@@ -680,6 +717,41 @@ if [ "$rc" -ne 0 ]; then
   exit 14
 fi
 
+# --- 18: the tag the job made names the release commit ---------------------------------
+# From here on every push sends RELEASE_COMMIT and TAG_OBJECT by sha, never what main or
+# rel-<t8> names by then (INFRA-024). reported_sha prints the sha on a sibling's one
+# "<label> <sha> " line, or nothing when that line is missing or repeated.
+reported_sha() {
+  local re="^$1 +([0-9a-f]+) " line sha="" n=0
+  while IFS= read -r line; do
+    if [[ "$line" =~ $re ]]; then
+      n=$((n + 1))
+      sha="${BASH_REMATCH[1]}"
+    fi
+  done < "$2"
+  if [ "$n" -eq 1 ]; then printf '%s\n' "$sha"; fi
+}
+# stop_moved <what> <sha>: exit 18 after the deploy, with the tag's way back and recovery.
+stop_moved() {
+  printf 'release: error: %s names %s, not the release commit %s\n' "$1" "${2:-no single commit}" "$RELEASE_COMMIT" >&2
+  say "stopped: ${TAG} moved during the run, so the site may serve another commit; nothing was pushed"
+  say "to put ${TAG} back where this run made it:"
+  say "  git update-ref refs/tags/${TAG} ${TAG_OBJECT}"
+  say "then finish or abandon it:"
+  print_finish_abandon "$TAG" "$PRE" "$RELEASE_COMMIT" "$TAG_OBJECT"
+  exit 18
+}
+TAG_OBJECT="$(git rev-parse -q --verify "refs/tags/${TAG}" 2>/dev/null || true)"
+if [ "$(git cat-file -t "${TAG_OBJECT:-0}" 2>/dev/null || true)" != "tag" ] \
+  || [ "$(git rev-parse -q --verify "${TAG_OBJECT}^{commit}" 2>/dev/null || true)" != "$RELEASE_COMMIT" ]; then
+  printf 'release: error: right after git tag, %s is not an annotated tag of the release commit %s\n' "$TAG" "$RELEASE_COMMIT" >&2
+  say "stopped: ${TAG} moved as it was made; nothing was deployed or pushed"
+  say "to abandon it:"
+  say "  git tag -d ${TAG}"
+  say "  git reset --keep ${PRE}"
+  exit 18
+fi
+
 # --- 15: deploy, shown ------------------------------------------------------------------------
 set +e
 "$SELF_DIR/deploy.sh" --ref "$TAG" 2>&1 < /dev/null | tee "$SCRATCH/deploy.out"
@@ -697,9 +769,13 @@ done < "$SCRATCH/deploy.out"
 if [ "$rc" -ne 0 ]; then
   printf 'release: error: deploy.sh failed (exit %s)\n' "$rc" >&2
   say "stopped: ${TAG} exists locally; the deploy failed (exit ${rc}), so the site may serve part of it; nothing was pushed"
-  print_finish_abandon "$TAG" "$PRE"
+  print_finish_abandon "$TAG" "$PRE" "$RELEASE_COMMIT" "$TAG_OBJECT"
   exit 15
 fi
+
+# --- 18: deploy.sh deployed the release commit -------------------------------------------
+DEPLOYED_SHA="$(reported_sha deployed "$SCRATCH/deploy.out")"
+[ "$DEPLOYED_SHA" = "$RELEASE_COMMIT" ] || stop_moved "deploy.sh's deployed line" "$DEPLOYED_SHA"
 
 # --- 16: the drift check, shown -----------------------------------------------------------------
 set +e
@@ -709,7 +785,7 @@ set -e
 if [ "$rc" -ne 0 ]; then
   printf 'release: error: drift-check.sh failed (exit %s)\n' "$rc" >&2
   say "stopped: ${TAG} is deployed but the drift check failed (exit ${rc}); nothing was pushed, and nothing was rolled back"
-  print_finish_abandon "$TAG" "$PRE"
+  print_finish_abandon "$TAG" "$PRE" "$RELEASE_COMMIT" "$TAG_OBJECT"
   if [ -n "$STAMP" ]; then
     say "or, to restore the files this deploy replaced (backup set ${STAMP}), instead of the redeploy:"
     say "  scripts/deploy.sh --rollback ${STAMP}"
@@ -724,18 +800,25 @@ if [ "$rc" -ne 0 ]; then
   exit 16
 fi
 
+# --- 18: drift-check.sh checked the release commit -----------------------------------------
+CHECKED_SHA="$(reported_sha ref "$SCRATCH/drift.out")"
+[ "$CHECKED_SHA" = "$RELEASE_COMMIT" ] || stop_moved "drift-check.sh's ref line" "$CHECKED_SHA"
+
 # --- 17: push, only now -----------------------------------------------------------------------
 rc=0
-git push --atomic origin "refs/heads/${RELEASE_BRANCH}:refs/heads/${RELEASE_BRANCH}" "refs/tags/${TAG}:refs/tags/${TAG}" \
+git push --atomic origin "${RELEASE_COMMIT}:refs/heads/${RELEASE_BRANCH}" "${TAG_OBJECT}:refs/tags/${TAG}" \
   > "$SCRATCH/push.out" 2>&1 < /dev/null || rc=$?
 if [ "$rc" -ne 0 ]; then
   printf 'release: error: git push failed (exit %s); its own output is withheld because it names the remote\n' "$rc" >&2
   say "stopped: ${TAG} is deployed and drift-checked, but origin does not have it"
   say "to finish it:"
-  say "  git push --atomic origin refs/heads/${RELEASE_BRANCH}:refs/heads/${RELEASE_BRANCH} refs/tags/${TAG}:refs/tags/${TAG}"
+  say "  git push --atomic origin ${RELEASE_COMMIT}:refs/heads/${RELEASE_BRANCH} ${TAG_OBJECT}:refs/tags/${TAG}"
   say "if origin has moved meanwhile, resolve it by hand (fetch, then rebase or merge) before pushing"
   exit 17
 fi
 
 say "released ${SLUG}@${T8} as ${TAG}: deployed, drift-checked, and pushed with ${RELEASE_BRANCH}"
+if [ "$(git rev-parse -q --verify "refs/heads/${RELEASE_BRANCH}" 2>/dev/null || true)" != "$RELEASE_COMMIT" ]; then
+  say "note: ${RELEASE_BRANCH} moved during the run; origin's ${RELEASE_BRANCH} is the release commit ${RELEASE_COMMIT}, and what came after it stays local"
+fi
 exit 0

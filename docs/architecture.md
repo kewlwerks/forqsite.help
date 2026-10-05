@@ -198,7 +198,10 @@ a fixed message (the claim counts and the IDs of claims that hold, never a forqs
 subject), tags the commit `rel-<forqsite short sha>` (annotated, so `restamp.py`'s
 newest-release lookup sorts reliably), deploys that tag, and drift-checks it. It never
 pushes a release that has not deployed and passed the drift check: the push of `main` and
-the tag, one atomic push, is the last step. It never rolls back on its own: after a drift
+the tag, one atomic push, is the last step. It sends the release commit and the tag object,
+both by sha, so nothing that lands on `main` or moves the tag mid-run is carried, and it
+runs only once the deploy and the drift check each report the release commit. It never
+rolls back on its own: after a drift
 failure it stops unpushed and prints the ready-to-paste `deploy.sh --rollback <stamp>`
 command, which stays the operator's call. Every stop after the commit prints its own
 recovery commands, and a local `rel-` tag that origin lacks makes the next run refuse until

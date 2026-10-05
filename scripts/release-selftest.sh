@@ -36,7 +36,12 @@
 # that differs from the url refuses with 2 and prints neither URL, also with GIT_CONFIG set;
 # pushurls equal to the url are not refused) and REFSPEC (with hijacking remote.origin.push
 # refspecs, both the release's own push and the printed exit-17 push line land on main and
-# rel-<t8>).
+# rel-<t8>). INFRA-024 adds, under token INFRA-024/EXACT: the push and every printed push
+# line send the release commit and the tag object by sha, and exit 18 stops the job, pushing
+# nothing, when the release commit's only parent is not PRE, when rel-<t8> is not the tag
+# the job made, or when deploy.sh's deployed line or drift-check.sh's ref line does not name
+# the release commit. An optional hook file, run once by the stub ssh inside the deploy,
+# moves main or the tag in the deploy window.
 #
 # Exits non-zero if any case fails.
 
@@ -73,6 +78,7 @@ CONTROL_DIR="$WORK_DIR/control"
 STUB_BIN="$WORK_DIR/stub-bin"
 SSH_MARKER="$WORK_DIR/ssh-marker"
 SSH_REFUSE="$WORK_DIR/ssh-refuse"
+SSH_HOOK="$WORK_DIR/ssh-hook"
 GIT_LOG="$WORK_DIR/git-subcommands"
 HELPER="$WORK_DIR/helper.py"
 SERVER_SCRIPT="$WORK_DIR/server.py"
@@ -279,6 +285,10 @@ cat > "$STUB_BIN/ssh" <<STUB
 # command under dash against the local target directory.
 alias="\$1"
 echo "invoked" >> "$SSH_MARKER"
+if [ -f "$SSH_HOOK" ]; then
+  mv "$SSH_HOOK" "$SSH_HOOK.ran"
+  bash "$SSH_HOOK.ran" < /dev/null > /dev/null 2>&1
+fi
 echo "Warning: Permanently added '\$alias' (ED25519) to the list of known hosts." >&2
 if [ -f "$SSH_REFUSE" ]; then
   echo "ssh: connect to host \$alias port 22: Connection refused" >&2
@@ -380,7 +390,7 @@ new_case() {
   C="$d/repo"
   O="$d/origin.git"
   find "$TARGET" -mindepth 1 -delete
-  rm -f "$CONTROL_DIR"/override-* "$SSH_MARKER" "$SSH_REFUSE"
+  rm -f "$CONTROL_DIR"/override-* "$SSH_MARKER" "$SSH_REFUSE" "$SSH_HOOK" "$SSH_HOOK.ran"
 }
 
 # run_release [VAR=value ...] -- <release.sh args>: runs in $C; sets OUT, ERR, RC.
@@ -556,7 +566,7 @@ report DRIFT "the annotated tag exists locally" \
   "$([ "$(git -C "$C" cat-file -t "rel-$T1_8" 2>/dev/null)" = "tag" ] && echo 0 || echo 1)" "no tag object"
 ok=1
 if has "$OUT" "release:   scripts/deploy.sh --ref rel-$T1_8" && has "$OUT" "release:   scripts/drift-check.sh --ref rel-$T1_8" \
-  && has "$OUT" "release:   git push --atomic origin refs/heads/main:refs/heads/main refs/tags/rel-$T1_8:refs/tags/rel-$T1_8" && has "$OUT" "release:   git tag -d rel-$T1_8" \
+  && has "$OUT" "release:   git push --atomic origin $(git -C "$C" rev-parse HEAD):refs/heads/main $(git -C "$C" rev-parse "refs/tags/rel-$T1_8"):refs/tags/rel-$T1_8" && has "$OUT" "release:   git tag -d rel-$T1_8" \
   && has "$OUT" "release:   git reset --keep $PRE"; then ok=0; fi
 report DRIFT "prints the finish and abandon steps with PRE" "$ok" "stdout: $OUT"
 DSTAMP="$(sed -n 's/^stamp  *\([0-9]\{8\}T[0-9]\{6\}Z\)$/\1/p' <<< "$OUT" | head -n 1)"
@@ -604,7 +614,7 @@ run_release -- --yes "$T1"
 ok=1
 if [ "$RC" -eq 17 ] && origin_unchanged \
   && [ "$(served index.html | sha256sum)" = "$(git -C "$C" show "rel-$T1_8:index.html" | sha256sum)" ] \
-  && has "$OUT" "release:   git push --atomic origin refs/heads/main:refs/heads/main refs/tags/rel-$T1_8:refs/tags/rel-$T1_8"; then ok=0; fi
+  && has "$OUT" "release:   git push --atomic origin $(git -C "$C" rev-parse HEAD):refs/heads/main $(git -C "$C" rev-parse "refs/tags/rel-$T1_8"):refs/tags/rel-$T1_8"; then ok=0; fi
 report PUSH "push rejected (exit 17), origin unchanged, release served, push step printed" "$ok" "exit $RC; stdout: $OUT; stderr: $ERR"
 
 # =====================================================================================
@@ -870,6 +880,229 @@ ok=1
 if [ -n "$PUSH_CMD" ] && [ "$prc" -eq 0 ] && landed_unhijacked; then ok=0; fi
 report INFRA-023/REFSPEC "the printed exit-17 push line, run verbatim with hijacking remote.origin.push refspecs (exit 0, origin's main and rel-<T1_8> equal the local ones, no hijack ref)" \
   "$ok" "exit $prc; line: $PUSH_LINE; origin refs: $(git -C "$O" for-each-ref --format='%(refname)' | tr '\n' ' ')"
+
+# =====================================================================================
+# EXACT (INFRA-024): the job pushes exactly the commit and the tag object it deployed
+# =====================================================================================
+# origin_ref <ref>: origin's object for <ref>, or nothing.
+origin_ref() { git -C "$O" rev-parse -q --verify "$1" 2>/dev/null || true; }
+# exact_wrappers: commit wrappers over deploy.sh and drift-check.sh. Each moves the real
+# script to <name>-real.sh and, for --ref rel-* only, acts as EXACT_WRAP selects: deploy.sh
+# moves the tag to a same-tree child before the real run (move-before) or repeats its
+# deployed line (dup); drift-check.sh moves the tag after the real run (move-after).
+exact_wrappers() {
+  local s
+  for s in deploy drift-check; do
+    git -C "$C" mv "scripts/$s.sh" "scripts/$s-real.sh"
+    cat > "$C/scripts/$s.sh" <<'WRAPEOF'
+#!/usr/bin/env bash
+# Selftest wrapper (INFRA-024/EXACT) over <name>-real.sh.
+here="$(cd "$(dirname "$0")" && pwd)"
+self="$(basename "$0" .sh)"
+real="$here/$self-real.sh"
+ref=""
+prev=""
+for a in "$@"; do
+  if [ "$prev" = "--ref" ]; then ref="$a"; fi
+  prev="$a"
+done
+move() {
+  local child
+  child="$(git commit-tree -m "moved by the wrapper" -p "${ref}^{commit}" "${ref}^{tree}")"
+  git tag -f -a -m "moved by the wrapper" "$ref" "$child" > /dev/null 2>&1
+}
+case "$self:$ref:${EXACT_WRAP:-}" in
+  deploy:rel-*:move-before)
+    move
+    exec "$real" "$@"
+    ;;
+  deploy:rel-*:dup)
+    rc=0
+    out="$("$real" "$@")" || rc=$?
+    printf '%s\n' "$out"
+    grep '^deployed ' <<< "$out"
+    exit "$rc"
+    ;;
+  drift-check:rel-*:move-after)
+    rc=0
+    "$real" "$@" || rc=$?
+    move
+    exit "$rc"
+    ;;
+esac
+exec "$real" "$@"
+WRAPEOF
+    chmod +x "$C/scripts/$s.sh"
+  done
+  git -C "$C" add -A scripts
+  git -C "$C" commit -q -m "fixture: EXACT wrappers over deploy.sh and drift-check.sh"
+}
+
+# --- the normal path
+new_case
+run_release -- --yes "$T1"
+ok=1
+if [ "$RC" -eq 0 ] && [ "$(origin_ref refs/heads/main)" = "$(git -C "$C" rev-parse HEAD)" ] \
+  && [ "$(origin_ref "refs/tags/rel-$T1_8")" = "$(git -C "$C" rev-parse "refs/tags/rel-$T1_8")" ] \
+  && ! has "$OUT" "moved during the run"; then ok=0; fi
+report INFRA-024/EXACT "normal path (exit 0): origin's main is the release commit, origin's rel-<T1_8> is the local tag object, no moved note" \
+  "$ok" "exit $RC; stdout: $OUT; stderr: $ERR"
+
+# --- main moves in the deploy window
+new_case
+cat > "$SSH_HOOK" <<HOOKEOF
+git -C "$C" commit -q --allow-empty -m "landed on main in the deploy window"
+HOOKEOF
+run_release -- --yes "$T1"
+ok=1
+if [ "$RC" -eq 0 ] && [ -e "$SSH_HOOK.ran" ] \
+  && [ "$(origin_ref refs/heads/main)" = "$(git -C "$C" rev-parse "rel-$T1_8^{commit}")" ] \
+  && [ "$(origin_ref refs/heads/main)" = "$(git -C "$C" rev-parse 'main^')" ] \
+  && ! git -C "$O" cat-file -e "$(git -C "$C" rev-parse main)" 2>/dev/null \
+  && has "$OUT" "release: note: main moved during the run; origin's main is the release commit $(git -C "$C" rev-parse 'main^')"; then ok=0; fi
+report INFRA-024/EXACT "a commit added to main in the deploy window is not pushed (exit 0, origin's main is the release commit, the note printed)" \
+  "$ok" "exit $RC; stdout: $OUT; stderr: $ERR"
+
+# --- a post-commit hook commits on top of the release commit (operator ruling 3)
+new_case
+cat > "$C/.git/hooks/post-commit" <<'HOOKEOF'
+#!/bin/sh
+[ -z "${EXACT_POST_COMMIT:-}" ] || exit 0
+EXACT_POST_COMMIT=1 git commit -q --allow-empty -m "a hook's commit on top of the release commit"
+HOOKEOF
+chmod +x "$C/.git/hooks/post-commit"
+XPRE="$(git -C "$C" rev-parse HEAD)"
+ORIGIN_BEFORE="$(git -C "$O" for-each-ref --format='%(refname) %(objectname)')"
+run_release -- --yes "$T1"
+ok=1
+if [ "$RC" -eq 18 ] && [ ! -e "$SSH_MARKER" ] && ! grep -qx push "$GIT_LOG" && origin_unchanged \
+  && [ -z "$(git -C "$C" rev-parse -q --verify "refs/tags/rel-$T1_8" || true)" ] \
+  && has "$ERR" "is not a commit whose only parent is $XPRE" \
+  && grep -qxF "release:   git reset --keep $XPRE" <<< "$OUT"; then ok=0; fi
+report INFRA-024/EXACT "a post-commit hook's empty commit on top of the release commit is refused (exit 18, no ssh, no push, origin unchanged, no tag)" \
+  "$ok" "exit $RC; stdout: $OUT; stderr: $ERR"
+
+# --- the tag is re-pointed in the deploy window; the rerun; the printed recovery
+new_case
+cat > "$SSH_HOOK" <<HOOKEOF
+cd "$C" || exit 1
+git rev-parse "refs/tags/rel-$T1_8" > "$WORK_DIR/exact-saved-tag"
+child="\$(git commit-tree -m "moved in the deploy window" -p "rel-$T1_8^{commit}" "rel-$T1_8^{tree}")"
+git tag -f -a -m "moved in the deploy window" "rel-$T1_8" "\$child"
+HOOKEOF
+ORIGIN_BEFORE="$(git -C "$O" for-each-ref --format='%(refname) %(objectname)')"
+run_release -- --yes "$T1"
+MOVED_OUT="$OUT"
+XRC="$(git -C "$C" rev-parse HEAD)"
+SAVED="$(cat "$WORK_DIR/exact-saved-tag" 2>/dev/null || true)"
+ok=1
+if [ "$RC" -eq 18 ] && [ -n "$SAVED" ] && origin_unchanged && ! grep -qx push "$GIT_LOG" \
+  && has "$ERR" "drift-check.sh's ref line names" \
+  && grep -qxF "release:   git update-ref refs/tags/rel-$T1_8 $SAVED" <<< "$OUT" \
+  && grep -qxF "release:   git push --atomic origin $XRC:refs/heads/main $SAVED:refs/tags/rel-$T1_8" <<< "$OUT"; then ok=0; fi
+report INFRA-024/EXACT "rel-<T1_8> re-pointed in the deploy window is caught by the drift check's ref line (exit 18, origin unchanged, no push, the update-ref and sha push lines printed)" \
+  "$ok" "exit $RC; saved '$SAVED'; stdout: $OUT; stderr: $ERR"
+snap
+run_release -- --yes "$T1"
+expect INFRA-024/EXACT "rerun after exit 18 refuses as unfinished (exit 10, nothing touched)" 10
+report INFRA-024/EXACT "rerun after exit 18 prints the tag-only push by sha, naming the moved tag object" \
+  "$(grep -qxF "release:   git push --atomic origin $(git -C "$C" rev-parse "refs/tags/rel-$T1_8"):refs/tags/rel-$T1_8" <<< "$OUT" && echo 0 || echo 1)" "stdout: $OUT"
+# A new deploy in the same second as the last would collide on its backup stamp.
+sleep 1
+ok=0
+detail=""
+for want in "^release:   git update-ref " "^release:   scripts/deploy\\.sh --ref " \
+  "^release:   scripts/drift-check\\.sh --ref " "^release:   git push "; do
+  line="$(grep -E "$want" <<< "$MOVED_OUT" | head -n 1 || true)"
+  if [ -z "$line" ]; then ok=1; detail="no line matching $want"; break; fi
+  set +e
+  (cd "$C" && bash -c "${line#release:   }") >> "$WORK_DIR/exact-recovery.out" 2>&1
+  lrc=$?
+  set -e
+  if [ "$lrc" -ne 0 ]; then ok=1; detail="exit $lrc from: $line"; break; fi
+done
+if [ "$ok" -eq 0 ] && { [ "$(origin_ref refs/heads/main)" != "$XRC" ] || [ "$(origin_ref "refs/tags/rel-$T1_8")" != "$SAVED" ]; }; then
+  ok=1; detail="origin's main or rel-<T1_8> is not the release commit and the saved tag object"
+fi
+report INFRA-024/EXACT "printed exit-18 update-ref and finish lines, run verbatim, exit 0 and land the release commit and the saved tag object on origin" \
+  "$ok" "$detail"
+
+# --- the tag is re-pointed before the deploy resolves it
+new_case
+exact_wrappers
+ORIGIN_BEFORE="$(git -C "$O" for-each-ref --format='%(refname) %(objectname)')"
+run_release EXACT_WRAP=move-before -- --yes "$T1"
+ok=1
+if [ "$RC" -eq 18 ] && has "$ERR" "deploy.sh's deployed line names" && ! grep -qE '^result ' <<< "$OUT" \
+  && origin_unchanged; then ok=0; fi
+report INFRA-024/EXACT "rel-<T1_8> re-pointed before the deploy resolves it is caught by the deploy's deployed line (exit 18, the drift check never ran, origin unchanged)" \
+  "$ok" "exit $RC; stdout: $OUT; stderr: $ERR"
+
+# --- the deployed line is repeated
+new_case
+exact_wrappers
+ORIGIN_BEFORE="$(git -C "$O" for-each-ref --format='%(refname) %(objectname)')"
+run_release EXACT_WRAP=dup -- --yes "$T1"
+ok=1
+if [ "$RC" -eq 18 ] && has "$ERR" "deploy.sh's deployed line names no single commit" && origin_unchanged; then ok=0; fi
+report INFRA-024/EXACT "a repeated deployed line is no single commit (exit 18, origin unchanged)" \
+  "$ok" "exit $RC; stdout: $OUT; stderr: $ERR"
+
+# --- the tag is re-pointed after the drift check passed
+new_case
+exact_wrappers
+run_release EXACT_WRAP=move-after -- --yes "$T1"
+XRC="$(git -C "$C" rev-parse HEAD)"
+ok=1
+if [ "$RC" -eq 0 ] && [ "$(git -C "$O" rev-parse -q --verify "refs/tags/rel-$T1_8^{commit}" 2>/dev/null || true)" = "$XRC" ] \
+  && [ "$(git -C "$C" rev-parse "rel-$T1_8^{commit}")" != "$XRC" ]; then ok=0; fi
+report INFRA-024/EXACT "rel-<T1_8> re-pointed after the drift check passed is not pushed (exit 0, origin's rel-<T1_8> peels to the release commit, the local one does not)" \
+  "$ok" "exit $RC; stdout: $OUT; stderr: $ERR"
+
+# --- the tag is re-pointed as git tag writes it
+new_case
+cat > "$C/.git/hooks/reference-transaction" <<HOOKEOF
+#!/bin/sh
+[ "\$1" = committed ] || exit 0
+[ -z "\${EXACT_REF_TX:-}" ] || exit 0
+while read -r old new ref; do
+  if [ "\$ref" = "refs/tags/rel-$T1_8" ]; then
+    EXACT_REF_TX=1 git update-ref "refs/tags/rel-$T1_8" "\$(git rev-parse "refs/tags/rel-$R8")" < /dev/null
+  fi
+done
+HOOKEOF
+chmod +x "$C/.git/hooks/reference-transaction"
+XPRE="$(git -C "$C" rev-parse HEAD)"
+ORIGIN_BEFORE="$(git -C "$O" for-each-ref --format='%(refname) %(objectname)')"
+run_release -- --yes "$T1"
+ok=1
+if [ "$RC" -eq 18 ] && [ ! -e "$SSH_MARKER" ] && origin_unchanged && has "$ERR" "right after git tag" \
+  && grep -qxF "release:   git tag -d rel-$T1_8" <<< "$OUT" \
+  && grep -qxF "release:   git reset --keep $XPRE" <<< "$OUT"; then ok=0; fi
+report INFRA-024/EXACT "rel-<T1_8> re-pointed as git tag writes it (exit 18, no ssh, origin unchanged, the abandon steps printed)" \
+  "$ok" "exit $RC; stdout: $OUT; stderr: $ERR"
+
+# --- the exit-17 line, run after main and the tag moved
+new_case
+printf '#!/bin/sh\nexit 1\n' > "$O/hooks/pre-receive"
+chmod +x "$O/hooks/pre-receive"
+run_release -- --yes "$T1"
+XRC="$(git -C "$C" rev-parse HEAD)"
+XOBJ="$(git -C "$C" rev-parse "refs/tags/rel-$T1_8")"
+STOP_RC="$RC"
+git -C "$C" commit -q --allow-empty -m "after the exit-17 stop"
+git -C "$C" tag -f -a -m "moved after the exit-17 stop" "rel-$T1_8" HEAD > /dev/null 2>&1
+rm -f "$O/hooks/pre-receive"
+PUSH_LINE="$(grep -E '^release:   git push ' <<< "$OUT" | head -n 1 || true)"
+set +e
+(cd "$C" && bash -c "${PUSH_LINE#release:   }") > "$WORK_DIR/exact-printed-push.out" 2>&1
+prc=$?
+set -e
+ok=1
+if [ "$STOP_RC" -eq 17 ] && [ -n "$PUSH_LINE" ] && [ "$prc" -eq 0 ] \
+  && [ "$(origin_ref refs/heads/main)" = "$XRC" ] && [ "$(origin_ref "refs/tags/rel-$T1_8")" = "$XOBJ" ]; then ok=0; fi
+report INFRA-024/EXACT "printed exit-17 push line, run after main and rel-<T1_8> moved, lands the release commit and the tag object made (exit 0)" \
+  "$ok" "stop exit $STOP_RC; push exit $prc; line: $PUSH_LINE"
 
 # =====================================================================================
 # HYGIENE
