@@ -362,6 +362,7 @@ committed version.
 | `closed[].closed_by.commit` | string | in use | CONTENT-031 | The closing commit, a full sha. It is an ancestor of the `release.commit` the record is published with, and not an ancestor of the commit of the stamp the gap was listed under. A review story may merge the record while the pin still predates it, when the release that moves the pin is its post-merge step; until that release lands, the record holds only at the release target (CONTENT-040). |
 | `closed[].closed_by.path` | string | in use | CONTENT-031 | A path the closing commit touches. |
 | `closed[].evidence` | array | in use | CONTENT-031 | The claim's evidence, as for `claims[].evidence`. |
+| `closed[].note` | string | in use | CONTENT-042 | Free text that never names a claim id. It explains a closure the evidence alone does not show, such as a gap closed because forqsite took a different approach than the gap proposed (the note starts `Closed, superseded.`), and names any further commit behind the closure. Neither the checker nor `restamp.py` reads it. |
 
 ### Values
 

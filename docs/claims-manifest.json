@@ -91,30 +91,6 @@
           "symbol": "pnpm exec dotenv -e .env.local -- tsx scripts/scheduler.ts"
         },
         {
-          "path": "docker-compose.yml",
-          "symbol": "build: ."
-        },
-        {
-          "path": "docker-compose.yml",
-          "symbol": "image: postgres:16-alpine"
-        },
-        {
-          "path": "docs/deployment/docker-compose.rolling.yml",
-          "symbol": "build: ."
-        },
-        {
-          "path": "scripts/rolling-restart.sh",
-          "symbol": "COMPOSE=\"docker compose -f docker-compose.rolling.yml\""
-        },
-        {
-          "path": "docs/deployment/Caddyfile.example",
-          "symbol": "reverse_proxy * forqsite_a:3000 forqsite_b:3000 {"
-        },
-        {
-          "path": "docs/deployment/Caddyfile.example",
-          "symbol": "*.forqsite.ai, forqsite.ai, *.forqsite.com, forqsite.com {"
-        },
-        {
           "path": "package.json",
           "symbol": "\"dev\": \"next dev -p 6020\","
         },
@@ -129,18 +105,6 @@
         {
           "path": "docs/first-run.md",
           "symbol": "curl http://localhost:3000/api/health"
-        },
-        {
-          "path": "docs/operator-runbook.md",
-          "symbol": "The application listens on port 3000 by default."
-        },
-        {
-          "path": "docs/deployment/docker-compose.rolling.yml",
-          "symbol": "# Two forqsite instances (forqsite_a on :3000, forqsite_b on :3001) sit behind"
-        },
-        {
-          "path": "scripts/rolling-restart.sh",
-          "symbol": "until ! curl -sf http://localhost:3000/api/health > /dev/null 2>&1; do"
         },
         {
           "path": "scripts/backup.sh",
@@ -293,6 +257,14 @@
         {
           "path": "docs/operator-runbook.md",
           "symbol": "**Three live documents state this install/pin sequence, and changing one obliges you to change all"
+        },
+        {
+          "path": "docs/operator-runbook.md",
+          "symbol": "`pnpm start` wraps `next start -H 0.0.0.0 -p 6020` — the application listens on port 6020, not"
+        },
+        {
+          "path": "Dockerfile",
+          "symbol": "CMD [\"sh\", \"-c\", \"node_modules/.bin/next start -H 0.0.0.0 -p ${PORT:-3000}\"]"
         }
       ],
       "stamp": "S-01",
@@ -425,7 +397,7 @@
         },
         {
           "path": "src/services/block-registry/index.ts",
-          "symbol": "return { ok: false, error: 'invalid_data', detail }"
+          "symbol": "return { ok: false, error: 'invalid_data', detail, blockType: block.type, blockIndex: index }"
         },
         {
           "path": "src/services/block-registry/index.ts",
@@ -773,8 +745,8 @@
       "id": "C-022",
       "page": "gap-handoff.html",
       "location": "Intro, third paragraph",
-      "claim": "The gap ordering assumes production stays non-docker, with network Postgres and MinIO and compose as a development convenience.",
-      "quote": "Ordering assumes production stays non-docker",
+      "claim": "The gap ordering assumes the reader runs forqsite's default single-instance install, not docker, with network Postgres and MinIO.",
+      "quote": "Ordering assumes you run forqsite's default single-instance install",
       "evidence": [
         {
           "path": "docs/first-run.md",
@@ -801,16 +773,13 @@
           "symbol": "deploys when enabled. Single-instance, maintenance-window installs remains the"
         },
         {
-          "path": "docker-compose.yml",
-          "symbol": "# docker-compose.yml — forqsite single-instance deployment"
+          "path": "docs/operator-runbook.md",
+          "symbol": "For a single instance run from a checkout (§ 2.7):"
         }
       ],
       "stamp": "S-05",
-      "result": "open",
+      "result": "changed",
       "absent": [
-        {
-          "path": "Dockerfile"
-        },
         {
           "path": "docs/deployment/docker-compose.rolling.yml",
           "symbol": "postgres"
@@ -820,7 +789,7 @@
           "symbol": "minio"
         }
       ],
-      "note": "The non-docker production premise is this page's own ordering assumption; no file in the forqsite repository designates production as non-docker. Re-checked at forqsite commit 1fda3228 as \"forqsite's production documentation still treats Postgres and MinIO as network services and compose as a development convenience\". It holds: the first-run prerequisites and the runbook require Postgres and MinIO as network services reached over TCP/IP; the runbook's install and standard upgrade are pnpm build, pnpm start and a process-manager restart, not docker; architecture.md keeps single-instance installs the default and the rolling restart opt-in. The only docker production path is that opt-in rolling topology (docs/deployment/docker-compose.rolling.yml driven by scripts/rolling-restart.sh), which runs the application containers only, declares no Postgres or MinIO service, and cannot build because the repository has no Dockerfile. One discrepancy is recorded rather than hidden: the root docker-compose.yml calls itself \"forqsite single-instance deployment\", while no install or upgrade document routes an operator through it; \"compose as a dev convenience\" is the rescoping the gap list proposes, not forqsite's wording. The runbook's docker references are unchanged in count between forqsite commits 17b78645 and 1fda3228, so nothing moved toward docker and the gap ordering needs no re-sequencing."
+      "note": "CHANGED: was \"Ordering assumes production stays non-docker: network Postgres and MinIO, with compose as a dev convenience.\"; now \"Ordering assumes you run forqsite's default single-instance install, not docker: network Postgres and MinIO, with the app and scheduler under a process supervisor.\" The non-docker premise is this page's own; no file in the forqsite repository designates production as non-docker. At forqsite commit afed86a7 (cp-PM107-main) the old wording no longer held: the root docker-compose.yml is gone, and a Dockerfile builds the one production image that forqsite's opt-in rolling pair runs (b2f0712d, f316120f), so compose is no longer a dev convenience. What the page now assumes holds there: architecture.md keeps single-instance installs the default and the rolling restart opt-in, the runbook's single-instance upgrade is a checkout restarted by a process manager, and Postgres and MinIO are network services that the rolling compose file does not declare."
     },
     {
       "id": "C-023",
@@ -858,62 +827,11 @@
       ]
     },
     {
-      "id": "C-024",
-      "page": "gap-handoff.html",
-      "location": "GAP-004 entry, problem and evidence",
-      "claim": "Both compose files declare build: . with no Dockerfile, rolling-restart.sh points at the rolling compose file by the wrong path, Caddyfile.example targets :3000 with hardcoded hostnames, and the root compose db is plain postgres:16-alpine with no MinIO service.",
-      "quote": "Both compose files declare build: . but no Dockerfile exists.",
-      "evidence": [
-        {
-          "path": "docker-compose.yml",
-          "symbol": "build: ."
-        },
-        {
-          "path": "docker-compose.yml",
-          "symbol": "image: postgres:16-alpine"
-        },
-        {
-          "path": "docs/deployment/docker-compose.rolling.yml",
-          "symbol": "build: ."
-        },
-        {
-          "path": "scripts/rolling-restart.sh",
-          "symbol": "COMPOSE=\"docker compose -f docker-compose.rolling.yml\""
-        },
-        {
-          "path": "docs/deployment/Caddyfile.example",
-          "symbol": "reverse_proxy * forqsite_a:3000 forqsite_b:3000 {"
-        },
-        {
-          "path": "docs/deployment/Caddyfile.example",
-          "symbol": "*.forqsite.ai, forqsite.ai, *.forqsite.com, forqsite.com {"
-        }
-      ],
-      "stamp": "S-07",
-      "result": "open",
-      "absent": [
-        {
-          "path": "Dockerfile"
-        },
-        {
-          "path": "docker-compose.rolling.yml"
-        },
-        {
-          "path": "docker-compose.yml",
-          "symbol": "minio"
-        },
-        {
-          "path": "docker-compose.yml",
-          "symbol": "pgvector"
-        }
-      ]
-    },
-    {
       "id": "C-025",
       "page": "gap-handoff.html",
       "location": "GAP-005 entry, problem and evidence",
-      "claim": "The app binds port 6020 while first-run.md, the runbook, the rolling compose file, Caddyfile.example and rolling-restart.sh all use 3000.",
-      "quote": "reverse_proxy * forqsite_a:3000 forqsite_b:3000",
+      "claim": "A checkout binds port 6020 (package.json dev and start) while docs/first-run.md uses 3000; the production Docker image defaults to 3000 through PORT, which the checkout's start script does not read.",
+      "quote": "but docs/first-run.md still says 3000",
       "evidence": [
         {
           "path": "package.json",
@@ -933,23 +851,16 @@
         },
         {
           "path": "docs/operator-runbook.md",
-          "symbol": "The application listens on port 3000 by default."
+          "symbol": "`pnpm start` wraps `next start -H 0.0.0.0 -p 6020` — the application listens on port 6020, not"
         },
         {
-          "path": "docs/deployment/docker-compose.rolling.yml",
-          "symbol": "# Two forqsite instances (forqsite_a on :3000, forqsite_b on :3001) sit behind"
-        },
-        {
-          "path": "docs/deployment/Caddyfile.example",
-          "symbol": "reverse_proxy * forqsite_a:3000 forqsite_b:3000 {"
-        },
-        {
-          "path": "scripts/rolling-restart.sh",
-          "symbol": "until ! curl -sf http://localhost:3000/api/health > /dev/null 2>&1; do"
+          "path": "Dockerfile",
+          "symbol": "CMD [\"sh\", \"-c\", \"node_modules/.bin/next start -H 0.0.0.0 -p ${PORT:-3000}\"]"
         }
       ],
       "stamp": "S-07",
-      "result": "open"
+      "result": "changed",
+      "note": "CHANGED: was \"reverse_proxy * forqsite_a:3000 forqsite_b:3000\"; now \"but docs/first-run.md still says 3000\". At forqsite commit afed86a7 (cp-PM107-main) docs/deployment/Caddyfile.example no longer exists, the runbook states 6020 for a checkout and 3000 for the Docker image (§2.7), and the rolling compose file and the edge Caddy site file agree on 3000 inside the container. first-run.md is the remaining drift, and only the image reads PORT."
     },
     {
       "id": "C-027",
@@ -1539,6 +1450,34 @@
           "symbol": "it('reports MISSING for `K=   ` (whitespace-only value)', () => {"
         }
       ]
+    },
+    {
+      "id": "C-024",
+      "gap": "GAP-004",
+      "claim": "Both compose files declare build: . with no Dockerfile, rolling-restart.sh points at the rolling compose file by the wrong path, Caddyfile.example targets :3000 with hardcoded hostnames, and the root compose db is plain postgres:16-alpine with no MinIO service.",
+      "closed_by": {
+        "commit": "f316120f8a2f120c1b03741071381038a5b0f223",
+        "path": "scripts/rolling-restart.sh"
+      },
+      "evidence": [
+        {
+          "path": "Dockerfile",
+          "symbol": "CMD [\"sh\", \"-c\", \"node_modules/.bin/next start -H 0.0.0.0 -p ${PORT:-3000}\"]"
+        },
+        {
+          "path": "docs/deployment/docker-compose.rolling.yml",
+          "symbol": "image: ${FORQSITE_IMAGE:?set FORQSITE_IMAGE to a digest-pinned image reference}"
+        },
+        {
+          "path": "scripts/rolling-restart.sh",
+          "symbol": "docker compose -f \"$COMPOSE_FILE\" \"$@\""
+        },
+        {
+          "path": "docs/deployment/forqsite.caddy.example",
+          "symbol": "reverse_proxy forqsite_a:3000 forqsite_b:3000 {"
+        }
+      ],
+      "note": "Closed, superseded. The problem this gap described no longer exists, because forqsite took the opposite approach: it made Docker a production path rather than rescoping it to development. b2f0712d added the Dockerfile that builds forqsite's one production image; f316120f deleted the root docker-compose.yml and docs/deployment/Caddyfile.example, rewrote docs/deployment/docker-compose.rolling.yml to run that image by digest with no build step, and made scripts/rolling-restart.sh take the compose file as an argument. The fix this site proposed, compose rescoped to development dependencies and a systemd rolling pair, was not done, and its done-when tests were never met. Verified at forqsite commit afed86a7 (cp-PM107-main)."
     }
   ]
 }
