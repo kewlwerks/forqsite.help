@@ -32,7 +32,7 @@ the deployment either); no database
 ## Era and phase currency
 
 Current era: `001` — `docs/eras/001-initial.md`
-Current phase: 14-post1 — Release hardening before the second release
+Current phase: 15 — Keep the published docs correct: fix reader-facing errors, then release against current forqsite
 
 `docs/phases/index.md` is the source of truth for phase status. The two lines above
 and below are pointers into that record, not a second copy of it.

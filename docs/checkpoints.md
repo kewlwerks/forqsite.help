@@ -449,4 +449,59 @@ result             ok — served bytes match the ref for all 2 bundles
 
 ---
 
+## cp-15
+
+**Phase:** 15 — Keep the published docs correct: fix reader-facing errors, then release against current forqsite
+**Tag command:** `git tag cp-15 && git push origin main --tags`
+
+**Release commit:** `nullvalues/forqsite@afed86a735c8d171be5ee42ce58fee5b7ea25e37`
+(`cp-PM107-main`). It was pinned on 2026-10-06 by the attended release `rel-afed86a7`
+(release commit `18c5fd2`).
+
+**Scope (operator, 2026-10-05).** The phase was narrowed to correctness and release. CER-046
+and CER-056, the coverage machinery, moved to Do Much Later. Content stories used one spec, a
+build and a review.
+
+**Acceptance.** All 3 stories are complete.
+- **CONTENT-041** fixed the reader-facing command errors: the zero-width spaces, the systemd
+  env loading, `-o` dropped to match forqsite, the pack upload and pin, and the pack-backup
+  wording. It also added GAP-015.
+  - Before the build, a fable and opus back-check of the spec found real errors.
+  - The first build failed review on an overclaiming backup sentence. It was discarded, and the
+    story was rebuilt.
+- **CONTENT-042** corrected the site's facts about forqsite at `cp-PM107-main` (option A: keep
+  the non-docker default) and closed GAP-004 as superseded. Two phrases were fixed after
+  review.
+- **CONTENT-043** was added at checkpoint for the security gate's MEDIUM finding: the restore
+  block now clears any inherited `DATABASE_URL` and key. The gates ran before it. It is the fix
+  for the security finding, touches one page block and the backlog, and was reviewed on its
+  own. It shipped by a hand deploy at `7977e98`, because `release.sh` has nothing to do when the
+  forqsite pin does not move.
+
+**Gates:**
+- security PASS (opus). Its findings and their dispositions:
+  - one MEDIUM, fixed by CONTENT-043;
+  - one LOW about the file mode of `.env.local`, rejected as CER-069 by the earlier ruling;
+  - one LOW about `--save-exact`, which is not a defect, because forqsite's runbook pins the
+    same way.
+- intent ALIGNED.
+- docs PASS.
+- dark-feature-scan PASS.
+
+**CER-063 confirmed live.** The provenance sidecar names commits: first release commit
+`18c5fd2`, then `7977e98`. It no longer names a tag object.
+
+**Drift check, before the tag.** Run at `7977e98` right after the hand deploy. Exit 0:
+
+```
+ref                7977e982f530f1e5701cd2b2a41614b3cc42ec0f  7977e98 "cer: file CER-071 in Do Much Later (other libpq variables, from CONTENT-043 review)"
+index.html          ok  c62703828f451106171cd76e9c4a42594d664a844601dbdb07f85c19749d6c55
+gap-handoff.html    ok  c427f53d4b4777ecdd268fb5f2a9190203f8acb9b3647464a9d00693f09e278c
+nginx.conf          not served — bind-mounted only; no request returns its bytes, so this check cannot cover it
+provenance         claims 7977e98 deployed 2026-10-06T22:19:09Z  (claim, not the basis of the result above)
+result             ok — served bytes match the ref for all 2 bundles
+```
+
+---
+
 _(Add a checkpoint section for each phase. Tag only after full checkpoint sequence passes.)_
