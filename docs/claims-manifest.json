@@ -1,72 +1,72 @@
 {
   "release": {
     "repo": "nullvalues/forqsite",
-    "commit": "94f5c339c085869c390d92f567461185b03f1bea",
-    "committed": "2026-09-25",
-    "pinned": "2026-10-01"
+    "commit": "afed86a735c8d171be5ee42ce58fee5b7ea25e37",
+    "committed": "2026-10-05",
+    "pinned": "2026-10-06"
   },
   "stamps": [
     {
       "id": "S-01",
       "page": "index.html",
       "location": "Sidebar, under the \"Known gaps →\" link (every route)",
-      "text": "repo: nullvalues/forqsite@94f5c339<br>verified: 2026-10-01",
-      "commit": "94f5c339",
-      "date": "2026-10-01",
+      "text": "repo: nullvalues/forqsite@afed86a7<br>verified: 2026-10-06",
+      "commit": "afed86a7",
+      "date": "2026-10-06",
       "scope": "The Known gaps callout: the claim that the linked gaps list (gap-handoff.html) is current at this commit."
     },
     {
       "id": "S-02",
       "page": "index.html",
       "location": "Operations (Day-two runbook) route, footer of the \"Upgrade\" section",
-      "text": "verified 2026-10-01 against nullvalues/forqsite@94f5c339",
-      "commit": "94f5c339",
-      "date": "2026-10-01",
+      "text": "verified 2026-10-06 against nullvalues/forqsite@afed86a7",
+      "commit": "afed86a7",
+      "date": "2026-10-06",
       "scope": "Section footer: the \"Upgrade\" section, back to its h2 heading. Reading taken: the callout above that heading (a pointer to the Backup & recovery route) is navigation, not a claim, and is not covered."
     },
     {
       "id": "S-03",
       "page": "index.html",
       "location": "Operations (Day-two runbook) route, footer of the \"Provider packs (condensed)\" section",
-      "text": "verified 2026-10-01 against nullvalues/forqsite@94f5c339",
-      "commit": "94f5c339",
-      "date": "2026-10-01",
+      "text": "verified 2026-10-06 against nullvalues/forqsite@afed86a7",
+      "commit": "afed86a7",
+      "date": "2026-10-06",
       "scope": "Section footer: the \"Provider packs (condensed)\" section, back to its h2 heading (the previous stamp closes the Upgrade section)."
     },
     {
       "id": "S-04",
       "page": "index.html",
       "location": "Promoting a change route, footer of the page (after \"Which collapses are safe\")",
-      "text": "verified 2026-10-01 against nullvalues/forqsite@94f5c339",
-      "commit": "94f5c339",
-      "date": "2026-10-01",
+      "text": "verified 2026-10-06 against nullvalues/forqsite@afed86a7",
+      "commit": "afed86a7",
+      "date": "2026-10-06",
       "scope": "Reading taken: a page footer covering the whole Promoting a change route, not only its last h2 section. It is the only stamp on that route, it sits after the closing paragraph with extra spacing, and the page is one argument whose forqsite facts sit in its earlier sections. Advice to the operator (which environments to collapse) is not a forqsite claim and is not listed."
     },
     {
       "id": "S-05",
       "page": "gap-handoff.html",
       "location": "Intro, third paragraph (the ordering assumption), inline",
-      "text": "Verified 2026-10-01 against <span style=\"font-family:'Geist Mono',monospace; font-size:13px;\">nullvalues/forqsite@94f5c339</span>",
-      "commit": "94f5c339",
-      "date": "2026-10-01",
+      "text": "Verified 2026-10-06 against <span style=\"font-family:'Geist Mono',monospace; font-size:13px;\">nullvalues/forqsite@afed86a7</span>",
+      "commit": "afed86a7",
+      "date": "2026-10-06",
       "scope": "Inline stamp: its own paragraph, the ordering assumption that production stays non-docker. Reading taken: it does not extend to the TL;DR ordering below it or to the GAP entries, which the footer stamp covers."
     },
     {
       "id": "S-06",
       "page": "gap-handoff.html",
       "location": "GAP-012 entry, last row of the EVIDENCE table",
-      "text": "['nullvalues/forqsite@94f5c339', 'every line above checked at this commit on 2026-10-01']",
-      "commit": "94f5c339",
-      "date": "2026-10-01",
+      "text": "['nullvalues/forqsite@afed86a7', 'every line above checked at this commit on 2026-10-06']",
+      "commit": "afed86a7",
+      "date": "2026-10-06",
       "scope": "Table-row stamp: the five GAP-012 evidence rows above it. The GAP-012 entry as a whole (its problem statement) is a GAP entry and is covered by the footer stamp."
     },
     {
       "id": "S-07",
       "page": "gap-handoff.html",
       "location": "Page footer, below the last GAP entry",
-      "text": "forqsite known gaps · verified against nullvalues/forqsite@94f5c339 · 1 october 2026",
-      "commit": "94f5c339",
-      "date": "2026-10-01",
+      "text": "forqsite known gaps · verified against nullvalues/forqsite@afed86a7 · 6 october 2026",
+      "commit": "afed86a7",
+      "date": "2026-10-06",
       "scope": "Page footer: every GAP entry on the page, one claim per entry for its problem statement and evidence rows, except the GAP-012 evidence rows, which carry their own table-row stamp."
     }
   ],
@@ -1339,8 +1339,7 @@
         }
       ],
       "stamp": "S-03",
-      "result": "changed",
-      "note": "CHANGED: step 2 said \"pnpm add -w file:/path/to/pack.tgz — after verifying its sha512 against what the author handed over\"; at forqsite commit 1fda3228 the operator runbook's section 14.2 installs by scoped package name, pnpm add -w \"@forqsite-packs/<name>@<version>\", withdraws the file: tarball install by name, and requires the lockfile entry to carry integrity and tarball, and the handover contract's step 9, which the runbook names as authoritative, was rewritten the same way. Step 2 now gives the scoped install, keeps the sha512 check, names the lockfile check, and says the file: install is withdrawn. forqsite's own platform-admin install page still prints the withdrawn command. Verified at forqsite commit 1fda3228 on 2026-09-30; the section's stamp then printed 2026-09-24, the date the claims it already covered were verified."
+      "result": "open"
     },
     {
       "id": "C-043",
