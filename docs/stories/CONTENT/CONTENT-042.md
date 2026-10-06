@@ -2,7 +2,7 @@
 id: CONTENT-042
 rail: CONTENT
 title: Review the stale claims at the newest forqsite checkpoint, then release
-status: planned
+status: complete
 phase: "15"
 story_class: content
 auth_gated: false
