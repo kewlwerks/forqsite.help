@@ -56,7 +56,7 @@ unchanged.
 2. In the note under the block, which begins "You choose the target by choosing the
    checkout", make the parenthetical about a shell-exported `DATABASE_URL` point to the
    `unset` line. Keep the change to one clause.
-3. In `docs/cer/backlog.md`, add a CER-069 row recording this finding, marked
+3. In `docs/cer/backlog.md`, add a CER-070 row recording this finding, marked
    `**RESOLVED Phase 15 — CONTENT-043.**`.
 
 ## Tests
@@ -75,7 +75,7 @@ a=t.index(u); b=t.index("# key first"); c=t.index("export AI_CREDENTIAL_ENCRYPTI
 assert a<b<c, "unset must precede the key export"
 EOF
 git diff --quiet main -- gap-handoff.html docs/claims-manifest.json
-grep -q "^| CER-069 .*RESOLVED Phase 15 — CONTENT-043" docs/cer/backlog.md
+grep -q "^| CER-070 .*RESOLVED Phase 15 — CONTENT-043" docs/cer/backlog.md
 FORQSITE_CLONE="${FORQSITE_CLONE:?}" python3 scripts/stale-claims.py --no-commits cp-PM107-main >/dev/null
 rm -rf $T; echo OK
 ```
