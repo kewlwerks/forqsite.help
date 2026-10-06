@@ -60,11 +60,12 @@ CONTENT-041 runs first. Its edits ship in CONTENT-042's release, so the site is 
   phrases inaccurate (one MEDIUM, one LOW), and they were fixed under a spec amendment
   before merge.
 - **Release.** `release.sh --yes cp-PM107-main` moved the pin from `94f5c339` to
-  `afed86a7`. Of 42 claims, 38 are open, 2 changed and 1 added. It made release commit
+  `afed86a7`. Of 42 claims, 38 are open, 2 changed and 1 added. The 42nd, the Known-gaps claim, carries no result. It made release commit
   `18c5fd2` and tag `rel-afed86a7`, which were deployed, drift-checked and pushed. The live
   provenance sidecar now names the release commit `18c5fd2`, not a tag object, so the
-  CER-063 fix is live. After the release the checker reports 42 untouched claims and 2 closed
-  records (GAP-006, GAP-004).
+  CER-063 fix is live. Measured from the old pin, the release saw 21 claims untouched and 21 holding. Measured
+  from the new pin, the checker reports 42 untouched claims and 2 closed records (GAP-006,
+  GAP-004).
 
 ## Schema delivery
 
@@ -79,9 +80,15 @@ this phase, record the management surface before the phase is checkpointed.
 
 ### CP-15 Cold-eyes checklist
 
-- [ ] written-never-read — does anything this phase persists have no reader?
-- [ ] required-never-written — does any read path depend on a value no writer produces?
-- [ ] duplicate state — is any fact now stored twice with independent writers?
-- [ ] half-implementation — is any branch unreachable, or any producer without its consumer?
+- [x] written-never-read — one deliberate instance. `closed[].note` is for people only: no code
+  reads it, and its schema row says so. Only GAP-004's record carries one, and nothing beyond
+  CONTENT-042's own check enforces its "no claim ids" rule. Accepted, because the phase scoped
+  machinery out.
+- [x] required-never-written — none. `restamp.py` writes every stamp and the pin.
+- [x] duplicate state — low risk. Gap status lives in the manifest and on the gap page, which
+  the checker guards, and in the backlog. The README's "10 items, GAP-003 to GAP-015" is
+  counted by hand, so it will drift when a gap closes. That is the deferred CER-056 class.
+- [x] half-implementation — none. Every producer has a consumer, and the release is deployed,
+  drift-checked and pushed.
 
-— developer fills in after phase completion —
+Filled 2026-10-06 at checkpoint, from the intent and docs gates.

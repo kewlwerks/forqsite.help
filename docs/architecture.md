@@ -354,7 +354,7 @@ committed version.
 | `claims[].closed_by` | object | in use | CONTENT-031, CONTENT-036 | Appears on a live claim that is only partly closed. |
 | `claims[].closed_by.commit` | string | in use | CONTENT-031 | A full sha, an ancestor of `release.commit` and not an ancestor of the old stamp's commit. |
 | `claims[].closed_by.path` | string | in use | CONTENT-031 | A path the `closed_by` commit touches. |
-| `closed` | array | in use | CONTENT-031, CONTENT-036, CONTENT-040 | A closed gap's claims move out of `claims` into this array, and the gap is removed from both pages. |
+| `closed` | array | in use | CONTENT-031, CONTENT-036, CONTENT-040, CONTENT-042 | A closed gap's claims move out of `claims` into this array, and the gap is removed from both pages. |
 | `closed[].id` | string | in use | CONTENT-031 | The claim id. |
 | `closed[].gap` | string | in use | CONTENT-031 | The gap that was closed. |
 | `closed[].claim` | string | in use | CONTENT-031 | The claim in words. |
