@@ -39,6 +39,7 @@ command block" to two content stories and one release:
 |----|-------|--------|
 | CONTENT-041 | Fix the reader-facing command errors (zero-width spaces, systemd EnvironmentFile, GAP-013's dotenv `-o`, the HTTPS pack pin) and record the admin-page install as a gap | complete |
 | CONTENT-042 | Review the stale claims at the newest forqsite checkpoint, then release | complete |
+| CONTENT-043 | Restore block clears inherited DATABASE_URL and key before running | planned |
 
 ## Story ordering
 
@@ -66,6 +67,11 @@ CONTENT-041 runs first. Its edits ship in CONTENT-042's release, so the site is 
   CER-063 fix is live. Measured from the old pin, the release saw 21 claims untouched and 21 holding. Measured
   from the new pin, the checker reports 42 untouched claims and 2 closed records (GAP-006,
   GAP-004).
+
+**CONTENT-043 was added at checkpoint (2026-10-06).** The CP-15 security audit passed with
+one MEDIUM finding: the restore block let a shell-exported `DATABASE_URL` override the
+checkout's choice of target. The operator ruled to fix it before tagging. Because the
+forqsite pin does not move, it ships by a hand deploy and drift check, not `release.sh`.
 
 ## Schema delivery
 
