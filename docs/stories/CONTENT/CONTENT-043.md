@@ -2,7 +2,7 @@
 id: CONTENT-043
 rail: CONTENT
 title: Restore block clears inherited DATABASE_URL and key before running
-status: planned
+status: complete
 phase: "15"
 story_class: content
 auth_gated: false

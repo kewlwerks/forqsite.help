@@ -39,7 +39,7 @@ command block" to two content stories and one release:
 |----|-------|--------|
 | CONTENT-041 | Fix the reader-facing command errors (zero-width spaces, systemd EnvironmentFile, GAP-013's dotenv `-o`, the HTTPS pack pin) and record the admin-page install as a gap | complete |
 | CONTENT-042 | Review the stale claims at the newest forqsite checkpoint, then release | complete |
-| CONTENT-043 | Restore block clears inherited DATABASE_URL and key before running | planned |
+| CONTENT-043 | Restore block clears inherited DATABASE_URL and key before running | complete |
 
 ## Story ordering
 
