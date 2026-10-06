@@ -60,6 +60,12 @@ which is `afed86a735c8d171be5ee42ce58fee5b7ea25e37`, 108 commits later. At that 
      `docs/architecture.md`. That is why `README.md` and `docs/architecture.md` joined
      `touches:`.
 
+**Amended 2026-10-06 after review.** Two phrases were corrected, and the Tests pin both:
+- Instruction 2's :767 sentence now says the script "drives Docker only". The old text said
+  "drives docker compose and nothing else", but the script also calls `docker inspect`.
+- Instruction 2's :863 sentence now names the four overlay files. The old text said
+  "a provider overlay".
+
 **Before the build, show the operator** the drafted TL;DR bullet 1 (Instruction 3) and the
 GAP-004 note (Instruction 1).
 
@@ -151,13 +157,16 @@ the existing mono span: `<span style="font-family:'Geist Mono',monospace; font-s
      → `The designated production architecture: forqsite's default single-instance install, run as a plain Node process on the host, supervised by systemd, talking to <strong>network</strong> PostgreSQL and MinIO you operate separately. Caddy terminates TLS in front. forqsite also ships an opt-in Docker path, a two-instance rolling pair run from one digest-pinned image, which this site does not cover; forqsite's operator runbook §12.2 does.</p>`
      This is ruling 1's one sentence. The :615 H1, "Production, without docker", stays.
    - **:767** `The repo's rolling-restart story is docker-shaped (two containers + Caddy). The same pattern works with two systemd instances`
-     → `forqsite's own rolling restart is docker-shaped: two containers on one digest-pinned image behind Caddy, swapped by Mscripts/rolling-restart.sh</span>, which drives docker compose and nothing else. The same pattern works by hand with two systemd instances`
+     → `forqsite's own rolling restart is docker-shaped: two containers on one digest-pinned image behind Caddy, swapped by Mscripts/rolling-restart.sh</span>, which drives Docker only. The same pattern works by hand with two systemd instances`
+     The script calls `docker compose` through its `compose()` wrapper (:104-105) and
+     `docker inspect` directly (:118, :126), and nothing else (amended 2026-10-06 after review).
      The :766 H2 stays.
    - **:1085** `The designated shape: one app host, network data services, TLS at the edge. Nothing containerised in production.</p>`
      → `The designated shape: forqsite's default single-instance install on one app host, network data services, TLS at the edge. Nothing containerised in production; forqsite's opt-in Docker rolling pair is a different shape, not covered here.</p>`
    - **:863**, in Promoting a change. The text stays the site's own path. `</span> in between. After the build,`
-     → `</span> in between. forqsite&rsquo;s opt-in Docker path promotes differently: Mscripts/r1-build.sh</span> builds one image from a commit plus a provider overlay, and that image&rsquo;s digest is what moves between environments, with no build on the deployment host. After the build,`
-     The evidence is forqsite's runbook §2.7b and §12.2.
+     → `</span> in between. forqsite&rsquo;s opt-in Docker path promotes differently: Mscripts/r1-build.sh</span> builds one image from a commit plus a deploy overlay (its .npmrc, package.json, pnpm-lock.yaml and config/providers.json), and that image&rsquo;s digest is what moves between environments, with no build on the deployment host. After the build,`
+     The evidence is forqsite's runbook §2.7b and §12.2, and `OVERLAY_FILES` at
+     `scripts/r1-build.sh:97` (amended 2026-10-06 after review).
    - **:662**, port note: `several repo docs still say 3000 (GAP-005).` → `forqsite's first-run.md still says 3000 (GAP-005).`
    - **:1591**: delete the line `{ label: 'compose files claim a Dockerfile that does not exist', dot: bad, gap: 'GAP-004' },`,
      including its indentation and newline.
@@ -211,7 +220,8 @@ the existing mono span: `<span style="font-family:'Geist Mono',monospace; font-s
 ## Tests
 
 Run from the repo root with `FORQSITE_CLONE=<clone path> bash <this block>`.
-- **Measured at spec time, 2026-10-05.** On main `e73bbf6` it printed `57 failed` and exited 1.
+- **Measured at spec time, 2026-10-05.** On main `e73bbf6` it printed `57 failed` and exited 1. After the 2026-10-06 amendment, re-run
+  on main `eee3d2a`, it printed `58 failed` and exited 1, and the throwaway copy still passed.
   On a throwaway copy with the edits above, it printed `OK`, then `ALL-OK`, and exited 0. The
   `scripts/*-selftest.sh` loop was green on that copy.
 - **Acceptance.** `OK` and `ALL-OK`, exit 0, and the CLAUDE.md selftest loop stays green.
@@ -301,12 +311,13 @@ need(len(got) == len(set(got)) and set(got) == set(u), 'Known-gaps evidence is n
 old = [key(e) for e in BC['C-001']['evidence'] if key(e) in u]
 need(got == old + [k for k in u if k not in old], 'Known-gaps order: kept pairs in order, then new pairs')
 # 4. pages: old sentences gone, new present
-GONE = {'index.html': ['Compose files are dev conveniences', 'The compose files in the repo are dev conveniences', "The repo's rolling-restart story", 'The designated shape: one app host', 'several repo docs still say 3000', 'compose files claim a Dockerfile', 'port 6020 vs docs saying 3000', 'GAP-004', 'rolling topology say 3000'],
+GONE = {'index.html': ['Compose files are dev conveniences', 'The compose files in the repo are dev conveniences', "The repo's rolling-restart story", 'The designated shape: one app host', 'several repo docs still say 3000', 'compose files claim a Dockerfile', 'port 6020 vs docs saying 3000', 'GAP-004', 'rolling topology say 3000', 'docker compose and nothing else', 'plus a provider overlay'],
         'gap-handoff.html': ['eleven of them', 'production stays non-docker', 'compose rescoped to development', '003, 004 and 005', 'BLOCKS PROD PATH × 3', 'The designated production architecture is non-docker', 'GAP-004', 'Caddyfile.example', 'rolling topology all say 3000']}
 NEW = {'index.html': ["Production runtime is forqsite's default single-instance install, not docker, with network PostgreSQL and MinIO (see",
                       "forqsite also ships an opt-in Docker path, a two-instance rolling pair run from one digest-pinned image, which this site does not cover; forqsite's operator runbook §12.2 does.</p>",
                       "forqsite's own rolling restart is docker-shaped: two containers on one digest-pinned image behind Caddy, swapped by",
-                      "which drives docker compose and nothing else. The same pattern works by hand with two systemd instances",
+                      "which drives Docker only. The same pattern works by hand with two systemd instances",
+                      "builds one image from a commit plus a deploy overlay (its .npmrc, package.json, pnpm-lock.yaml and config/providers.json), and",
                       "Nothing containerised in production; forqsite's opt-in Docker rolling pair is a different shape, not covered here.</p>",
                       "forqsite&rsquo;s opt-in Docker path promotes differently:",
                       "and that image&rsquo;s digest is what moves between environments, with no build on the deployment host. After the build,",
