@@ -44,6 +44,28 @@ command block" to two content stories and one release:
 
 CONTENT-041 runs first. Its edits ship in CONTENT-042's release, so the site is released once.
 
+## What happened (2026-10-05 to 2026-10-06)
+
+- **CONTENT-041.** Before the build, an independent fable and opus back-check reviewed the
+  spec. It found the `chmod 600` advice wrong, the pack upload missing its second object, and
+  GAP-003 contradicting the fixed units. The operator reversed CER-049: the site now drops
+  `-o` to match forqsite, which never uses it.
+  - The first build failed review: an unqualified "packs need no backup" sentence would have
+    told readers who installed packs from a `file:` path to skip a needed backup. That build
+    was discarded, the spec was amended, and the story was rebuilt.
+  - GAP-015 was added at P2 correctness.
+- **CONTENT-042.** Forqsite now ships an opt-in Docker production path. The operator chose
+  option A: the site keeps documenting forqsite's default single-instance install and corrects
+  every fact about forqsite. GAP-004 is closed as superseded. Review found two spec-mandated
+  phrases inaccurate (one MEDIUM, one LOW), and they were fixed under a spec amendment
+  before merge.
+- **Release.** `release.sh --yes cp-PM107-main` moved the pin from `94f5c339` to
+  `afed86a7`. Of 42 claims, 38 are open, 2 changed and 1 added. It made release commit
+  `18c5fd2` and tag `rel-afed86a7`, which were deployed, drift-checked and pushed. The live
+  provenance sidecar now names the release commit `18c5fd2`, not a tag object, so the
+  CER-063 fix is live. After the release the checker reports 42 untouched claims and 2 closed
+  records (GAP-006, GAP-004).
+
 ## Schema delivery
 
 For each new persistent schema object (table, collection, migration) introduced in
